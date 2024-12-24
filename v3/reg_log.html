@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JWT Auth Client</title>
+</head>
+<body>
+<h1>JWT Authentication Example</h1>
+
+<div id="register">
+  <h2>Register</h2>
+  <input type="text" id="register-username" placeholder="Username">
+  <input type="password" id="register-password" placeholder="Password">
+  <button onclick="register()">Register</button>
+</div>
+
+<div id="login">
+  <h2>Login</h2>
+  <input type="text" id="login-username" placeholder="Username">
+  <input type="password" id="login-password" placeholder="Password">
+  <button onclick="login()">Login</button>
+</div>
+
+<div id="protected" style="display: none;">
+  <h2>Protected Routes</h2>
+  <button onclick="accessProtected()">Access Protected Route</button>
+  <button onclick="accessEditor()">Access Editor Route</button>
+  <button onclick="accessAdmin()">Access Admin Route</button>
+</div>
+
+<script>
+  let token = '';
+
+  async function register() {
+    const username = document.getElementById('register-username').value;
+    const password = document.getElementById('register-password').value;
+
+    const response = await fetch('http://localhost:8080/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    const result = await response.json();
+    alert(result.message || result.error);
+  }
+
+  async function login() {
+    const username = document.getElementById('login-username').value;
+    const password = document.getElementById('login-password').value;
+
+    const response = await fetch('http://localhost:8080/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    const result = await response.json();
+    if (response.ok) {
+      token = result.token;
+      alert('Login successful');
+      document.getElementById('protected').style.display = 'block';
+    } else {
+      alert(result.error);
+    }
+  }
+
+  async function accessProtected() {
+    const response = await fetch('http://localhost:8080/protected', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const result = await response.json();
+    alert(JSON.stringify(result));
+  }
+
+  async function accessEditor() {
+    const response = await fetch('http://localhost:8080/editor', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const result = await response.json();
+    alert(JSON.stringify(result));
+  }
+
+  async function accessAdmin() {
+    const response = await fetch('http://localhost:8080/admin', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const result = await response.json();
+    alert(JSON.stringify(result));
+  }
+</script>
+</body>
+</html>
