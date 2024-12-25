@@ -32,11 +32,6 @@ import (
 
 //////////////////////////////////////////////////////////////////////////
 
-// @title Example API
-// @version 1.0
-// @description This is a sample API server
-// @host localhost:8080
-// @BasePath /
 func main() {
 
 	var err error
@@ -87,10 +82,11 @@ func main() {
 		// Указываем конкретный домен, с которого разрешаем запросы
 		//c.Writer.Header().Set("Access-Control-Allow-Origin", "*") // запросы со всех источников ("*"), что может быть
 		// небезопасно, особенно если ваш сервис работает с конфиденциальными данными или требует авторизации.
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000") // Укажите ваш фронтенд-домен
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")             // Для передачи cookie и авторизации
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost") // Укажите ваш фронтенд-домен // :3000
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")        // Для передачи cookie и авторизации
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "Authorization") // Разрешить клиентам видеть заголовок (authToken)
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusNoContent)
@@ -99,7 +95,21 @@ func main() {
 		c.Next()
 	})
 
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// go get -u github.com/swaggo/gin-swagger
+	// go get -u github.com/swaggo/files
+
+	url := ginSwagger.URL("http://localhost:8081/swagger/doc.json") // Указываем путь к JSON-документации
+
+	router.GET("/swagger/*any", func(c *gin.Context) {
+		// Если запрос на корневой путь /swagger/, редиректим на /swagger/index.html
+		if c.Param("any") == "" || c.Param("any") == "/" {
+			c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
+			return
+		}
+		// Все остальные запросы обрабатывает Swagger Handler
+		ginSwagger.WrapHandler(swaggerFiles.Handler, url)(c)
+	})
+
 	routes.SetupRouter(router, db)
 
 	// У нас теперь WEB сервис

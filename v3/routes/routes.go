@@ -11,7 +11,9 @@ import (
 
 func SetupRouter(router *gin.Engine, db *sql.DB) {
 
-	admin := router.Group("/api/auth/admin") // раскомментировать , middleware.AuthMiddleware("admin"))
+	// TODO перенапрвыление пользователей без требуемых прав
+
+	admin := router.Group("/api/auth/admin", middleware.AuthMiddleware("admin"), middleware.LoggingMiddleware())
 	{
 		//admin.GET("/users", handlers.GetUsersHandler(db))
 		admin.GET("/users", handlers.GetUsersHandlerDB(db))

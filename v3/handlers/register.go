@@ -29,7 +29,7 @@ import (
 // @Failure 400 {object} map[string]string "error: Неверные данные запроса"
 // @Failure 409 {object} map[string]string "error: Имя пользователя/электронная почта/номер телефона уже используются"
 // @Failure 500 {object} map[string]string "error: Ошибка при создании хэша пароля или записи в базу данных"
-// @Router /register [post]
+// @Router /api/auth/register [post]
 func RegisterHandlerDB(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var user RegisterRequest

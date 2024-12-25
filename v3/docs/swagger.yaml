@@ -1,5 +1,9 @@
-basePath: /
 definitions:
+  handlers.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
   handlers.LoginRequest:
     properties:
       email:
@@ -22,14 +26,62 @@ definitions:
       username:
         type: string
     type: object
-host: localhost:8080
+  handlers.SuccessResponse:
+    properties:
+      data:
+        description: Используйте конкретный тип вместо `interface{}` (например, []User)
+      limit:
+        type: integer
+      offset:
+        type: integer
+      totalRecords:
+        type: integer
+    type: object
 info:
   contact: {}
-  description: This is a sample API server
-  title: Example API
-  version: "1.0"
 paths:
-  /api/login:
+  /api/auth/admin/users:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает список пользователей с информацией о роли, статусе и
+        времени регистрации. Требуется авторизация через Bearer Token.
+      parameters:
+      - description: Bearer токен
+        example: '"Bearer your_token"'
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Количество записей для возврата (по умолчанию 10)
+        in: query
+        name: length
+        type: integer
+      - description: Смещение записей (по умолчанию 0)
+        in: query
+        name: start
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Ошибка при подсчёте общего числа записей
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Получение списка пользователей
+      tags:
+      - users
+  /api/auth/login:
     post:
       consumes:
       - application/json
@@ -47,6 +99,10 @@ paths:
       responses:
         "200":
           description: Успешный ответ с токеном доступа
+          headers:
+            Authorization:
+              description: Bearer <токен доступа>
+              type: string
           schema:
             additionalProperties:
               type: string
@@ -84,7 +140,7 @@ paths:
       summary: Авторизация пользователя
       tags:
       - Authentication
-  /register:
+  /api/auth/register:
     post:
       consumes:
       - application/json

@@ -3,30 +3,41 @@ package handlers
 import (
 	"database/sql"
 	"github.com/gin-gonic/gin"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 )
 
+type SuccessResponse struct {
+	Data         interface{} `json:"data"` // Используйте конкретный тип вместо `interface{}` (например, []User)
+	TotalRecords int         `json:"totalRecords"`
+	Limit        int         `json:"limit"`
+	Offset       int         `json:"offset"`
+}
+
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+// GetUsersHandlerDB Получение таблицы пользователей
+// @Summary Получение списка пользователей
+// @Description Возвращает список пользователей с информацией о роли, статусе и времени регистрации. Требуется авторизация через Bearer Token.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer токен" example("Bearer your_token")
+// @Param length query int false "Количество записей для возврата (по умолчанию 10)"
+// @Param start query int false "Смещение записей (по умолчанию 0)"
+// @Success 200 {object} SuccessResponse
+// @Failure 401 {object} ErrorResponse "Unauthorized"
+// @Failure 500 {object} ErrorResponse "Ошибка при подсчёте общего числа записей"
+// @Security BearerAuth
+// @Router /api/auth/admin/users [get]
 func GetUsersHandlerDB(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Логирование параметров запроса
-		log.Println("Query params:", c.Request.URL.Query())
 
-		// Логирование заголовков
-		log.Println("Headers:", c.Request.Header)
-
-		// Логирование тела запроса (если есть)
-		if c.Request.Body != nil {
-			body, err := ioutil.ReadAll(c.Request.Body)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка чтения тела запроса"})
-				return
-			}
-			log.Println("Request Body:", string(body))
-		}
+		// TODO усовершенствовать таблицу и решить проблему отображеничя в случаи возврата неверных данных
 
 		//username := c.DefaultQuery("username", "")
 		//role := c.DefaultQuery("role", "")
@@ -135,12 +146,19 @@ func GetUsersHandlerDB(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"data":         users,
-			"totalRecords": totalRecords, // "recordsFiltered":filteredRecords,
-			"limit":        limit,
-			"offset":       offset,
+		c.JSON(http.StatusOK, SuccessResponse{
+			Data:         users,
+			TotalRecords: totalRecords,
+			Limit:        limit,
+			Offset:       offset,
 		})
+
+		//c.JSON(http.StatusOK, gin.H{
+		//	"data":         users,
+		//	"totalRecords": totalRecords, // "recordsFiltered":filteredRecords,
+		//	"limit":        limit,
+		//	"offset":       offset,
+		//})
 	}
 }
 
@@ -156,6 +174,42 @@ func nullTimeToString(nt sql.NullTime) string {
 		return nt.Time.Format(time.RFC3339) // Используйте формат времени ISO
 	}
 	return ""
+}
+
+func UpdateUserHandler(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		var input struct {
+			Username string `json:"username"`
+			Role     string `json:"role"`
+		}
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+			return
+		}
+
+		_, err := db.Exec("UPDATE users SET username = $1, role = $2 WHERE id = $3", input.Username, input.Role, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "User updated"})
+	}
+}
+
+func DeleteUserHandler(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		log.Println(id)
+		_, err := db.Exec("DELETE FROM users WHERE id = $1", id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+	}
 }
 
 //func GetUsersHandlerDB(db *sql.DB) gin.HandlerFunc {
@@ -252,41 +306,7 @@ func nullTimeToString(nt sql.NullTime) string {
 //	}
 //}
 
-func UpdateUserHandler(db *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		id := c.Param("id")
-		var input struct {
-			Username string `json:"username"`
-			Role     string `json:"role"`
-		}
-		if err := c.ShouldBindJSON(&input); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
-			return
-		}
-
-		_, err := db.Exec("UPDATE users SET username = $1, role = $2 WHERE id = $3", input.Username, input.Role, id)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"message": "User updated"})
-	}
-}
-
-func DeleteUserHandler(db *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		id := c.Param("id")
-		log.Println(id)
-		_, err := db.Exec("DELETE FROM users WHERE id = $1", id)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
-	}
-}
+//////////
 
 // Рабочий код без ленивой прокрутки
 //func GetUsersHandlerDB(db *sql.DB) gin.HandlerFunc {

@@ -1,15 +1,72 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "This is a sample API server",
-        "title": "Example API",
-        "contact": {},
-        "version": "1.0"
+        "contact": {}
     },
-    "host": "localhost:8080",
-    "basePath": "/",
     "paths": {
-        "/api/login": {
+        "/api/auth/admin/users": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает список пользователей с информацией о роли, статусе и времени регистрации. Требуется авторизация через Bearer Token.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Получение списка пользователей",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "\"Bearer your_token\"",
+                        "description": "Bearer токен",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Количество записей для возврата (по умолчанию 10)",
+                        "name": "length",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Смещение записей (по умолчанию 0)",
+                        "name": "start",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SuccessResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Ошибка при подсчёте общего числа записей",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/login": {
             "post": {
                 "description": "Авторизация с использованием логина и пароля. Возвращает JWT токен доступа и устанавливает refresh токен в Cookie.",
                 "consumes": [
@@ -40,6 +97,12 @@
                             "type": "object",
                             "additionalProperties": {
                                 "type": "string"
+                            }
+                        },
+                        "headers": {
+                            "Authorization": {
+                                "type": "string",
+                                "description": "Bearer \u003cтокен доступа\u003e"
                             }
                         }
                     },
@@ -91,7 +154,7 @@
                 }
             }
         },
-        "/register": {
+        "/api/auth/register": {
             "post": {
                 "description": "Регистрирует нового пользователя с уникальным email, username или phone. Обязательные поля определяются конфигурацией.",
                 "consumes": [
@@ -157,6 +220,14 @@
         }
     },
     "definitions": {
+        "handlers.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.LoginRequest": {
             "type": "object",
             "properties": {
@@ -188,6 +259,23 @@
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.SuccessResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "description": "Используйте конкретный тип вместо `interface{}` (например, []User)"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "offset": {
+                    "type": "integer"
+                },
+                "totalRecords": {
+                    "type": "integer"
                 }
             }
         }

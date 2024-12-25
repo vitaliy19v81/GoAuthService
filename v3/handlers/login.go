@@ -130,7 +130,7 @@ func fetchUserFromDB(db *sql.DB, field, value string) (string, string, string, t
 // @Failure 429 {object} map[string]string "Слишком много запросов"
 // @Failure 500 {object} map[string]string "Ошибка сервера"
 // @Header 200 {string} Authorization "Bearer <токен доступа>"
-// @Router /api/login [post]
+// @Router /api/auth/login [post]
 func LoginHandlerDB(db *sql.DB) gin.HandlerFunc {
 	// Настраиваем лимитер для ограничения запросов
 	limiter := tollbooth.NewLimiter(5, nil) // Максимум 5 запросов в минуту
