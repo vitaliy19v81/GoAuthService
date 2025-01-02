@@ -26,6 +26,28 @@ definitions:
       username:
         type: string
     type: object
+  handlers.RegisterRequestEmail:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  handlers.RegisterRequestPhone:
+    properties:
+      password:
+        description: Пароль пользователя (обязательно)
+        type: string
+      phone:
+        description: Телефон пользователя (обязательно)
+        type: string
+    required:
+    - password
+    - phone
+    type: object
   handlers.SuccessResponse:
     properties:
       data:
@@ -182,6 +204,78 @@ paths:
               type: string
             type: object
       summary: Регистрация нового пользователя
+      tags:
+      - auth
+  /api/auth/register/emile:
+    post:
+      consumes:
+      - application/json
+      description: Регистрирует нового пользователя, указывая только почта и пароль.
+      parameters:
+      - description: Данные пользователя для упрощённой регистрации
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.RegisterRequestEmail'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'message: Регистрация прошла успешно'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 'error: Неверные данные запроса'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 'error: Ошибка при регистрации пользователя'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Упрощённая регистрация нового пользователя
+      tags:
+      - auth
+  /api/auth/register/phone:
+    post:
+      consumes:
+      - application/json
+      description: Регистрирует нового пользователя, указывая только телефон и пароль.
+      parameters:
+      - description: Данные пользователя для упрощённой регистрации
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.RegisterRequestPhone'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'message: Регистрация прошла успешно'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 'error: Неверные данные запроса'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: 'error: Ошибка при регистрации пользователя'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Упрощённая регистрация нового пользователя
       tags:
       - auth
 swagger: "2.0"

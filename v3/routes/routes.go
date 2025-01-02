@@ -11,9 +11,9 @@ import (
 
 func SetupRouter(router *gin.Engine, db *sql.DB) {
 
-	// TODO перенапрвыление пользователей без требуемых прав
+	// TODO перенаправление пользователей без требуемых прав
 
-	admin := router.Group("/api/auth/admin", middleware.AuthMiddleware("admin"), middleware.LoggingMiddleware())
+	admin := router.Group("/api/auth/admin", middleware.AuthMiddleware("admin")) //, middleware.LoggingMiddleware())
 	{
 		//admin.GET("/users", handlers.GetUsersHandler(db))
 		admin.GET("/users", handlers.GetUsersHandlerDB(db))
@@ -21,9 +21,12 @@ func SetupRouter(router *gin.Engine, db *sql.DB) {
 		admin.DELETE("/users/:id", handlers.DeleteUserHandler(db))
 	}
 
-	router.POST("/api/auth/register", handlers.RegisterHandlerDB(db))
+	router.POST("/api/auth/register/phone", handlers.RegisterByPhoneHandler(db)) //, middleware.LoggingMiddleware())
+	router.POST("/api/auth/register/emile", handlers.RegisterByEmailHandler(db))
+
+	router.POST("/api/auth/register", handlers.RegisterHandlerDB(db)) // all
 	router.POST("/api/auth/logout", handlers.LogoutHandler)
-	router.POST("/api/auth/login", handlers.LoginHandlerDB(db))
+	router.POST("/api/auth/login", handlers.LoginHandlerDB(db), middleware.LoggingMiddleware())
 
 	router.GET("/api/auth/required-fields", handlers.GetRequiredFieldsHandler())  // Получить текущие обязательные поля
 	router.POST("/api/auth/required-fields", handlers.SetRequiredFieldsHandler()) // Обновить список обязательных полей

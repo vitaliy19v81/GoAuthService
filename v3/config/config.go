@@ -11,6 +11,7 @@ import (
 var (
 	JwtSecretKey        string
 	JwtRefreshSecretKey string
+	PhoneSecretKey      string
 	AdminUsername       string
 	AdminPassword       string
 	DsnPostgres         string
@@ -28,13 +29,14 @@ func LoadConfig() {
 	// Загружаем переменные окружения
 	JwtSecretKey = os.Getenv("JWT_SECRET_KEY")
 	JwtRefreshSecretKey = os.Getenv("JWT_REFRESH_SECRET_KEY")
+	PhoneSecretKey = os.Getenv("PHONE_SECRET_KEY")
 	AdminUsername = os.Getenv("ADMIN_USERNAME")
 	AdminPassword = os.Getenv("ADMIN_PASSWORD")
 	DsnPostgres = os.Getenv("DSN_POSTGRES")
 	Environment = os.Getenv("ENVIRONMENT") // development или production
 
 	// Проверка на наличие обязательных переменных окружения
-	requiredVars := []string{JwtSecretKey, JwtRefreshSecretKey, AdminUsername, AdminPassword, DsnPostgres, Environment}
+	requiredVars := []string{JwtSecretKey, JwtRefreshSecretKey, PhoneSecretKey, AdminUsername, AdminPassword, DsnPostgres, Environment}
 	for _, v := range requiredVars {
 		if v == "" {
 			log.Fatalf("Missing required environment variable: %s", v)

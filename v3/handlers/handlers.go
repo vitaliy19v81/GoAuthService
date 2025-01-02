@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"regexp"
 )
 
 type LoginRequest struct {
@@ -23,10 +22,17 @@ type RegisterRequest struct {
 	Phone    *string `json:"phone,omitempty"`
 }
 
-var (
-	EmailRegex = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)                                             // Валидация email
-	PhoneRegex = regexp.MustCompile(`^\+?\d{0,3}[-\s]?\(?\d{2,5}\)?[-\s]?\d{2,4}[-\s]?\d{2,4}[-\s]?\d{2,4}$`) // Валидация телефона
-)
+// RegisterRequestPhone Модель для документации Swagger
+type RegisterRequestPhone struct {
+	Phone    *string `json:"phone" binding:"required"`    // Телефон пользователя (обязательно)
+	Password *string `json:"password" binding:"required"` // Пароль пользователя (обязательно)
+}
+
+// RegisterRequestEmail Модель для документации Swagger
+type RegisterRequestEmail struct {
+	Email    *string `json:"email" binding:"required"`
+	Password *string `json:"password" binding:"required"`
+}
 
 // example@example.com
 //user.name@sub.domain.com

@@ -217,6 +217,116 @@
                     }
                 }
             }
+        },
+        "/api/auth/register/emile": {
+            "post": {
+                "description": "Регистрирует нового пользователя, указывая только почта и пароль.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Упрощённая регистрация нового пользователя",
+                "parameters": [
+                    {
+                        "description": "Данные пользователя для упрощённой регистрации",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RegisterRequestEmail"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "message: Регистрация прошла успешно",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "error: Неверные данные запроса",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "error: Ошибка при регистрации пользователя",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/register/phone": {
+            "post": {
+                "description": "Регистрирует нового пользователя, указывая только телефон и пароль.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Упрощённая регистрация нового пользователя",
+                "parameters": [
+                    {
+                        "description": "Данные пользователя для упрощённой регистрации",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RegisterRequestPhone"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "message: Регистрация прошла успешно",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "error: Неверные данные запроса",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "error: Ошибка при регистрации пользователя",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -258,6 +368,38 @@
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.RegisterRequestEmail": {
+            "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.RegisterRequestPhone": {
+            "type": "object",
+            "required": [
+                "password",
+                "phone"
+            ],
+            "properties": {
+                "password": {
+                    "description": "Пароль пользователя (обязательно)",
+                    "type": "string"
+                },
+                "phone": {
+                    "description": "Телефон пользователя (обязательно)",
                     "type": "string"
                 }
             }
