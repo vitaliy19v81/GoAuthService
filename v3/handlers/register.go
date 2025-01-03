@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"apiP/v3/config"
+	"apiP/v3/db_postgres"
 	"apiP/v3/security"
 	"apiP/v3/validation"
 	"database/sql"
@@ -12,118 +13,84 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"log/slog"
 	"net/http"
-	"time"
 )
 
-// checkUsernameUniqueness проверяет уникальность username.
-func checkUsernameUniqueness(db *sql.DB, username *string) error {
+//// Регулярные выражения для email и phone
+//var (
+//	emailRegex = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+//	phoneRegex = regexp.MustCompile(`^\+?\d{0,3}[-\s]?\(?\d{2,5}\)?[-\s]?\d{2,4}[-\s]?\d{2,4}[-\s]?\d{2,4}$`)
+//)
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	var exists bool
-	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE username = $1)", username).Scan(&exists)
-	if err == nil && exists {
-		return fmt.Errorf("Имя пользователя уже занято")
-	}
-	return err
-}
-
-// checkEmailUniqueness проверяет уникальность email.
-func checkEmailUniqueness(db *sql.DB, email *string) error {
-	var exists bool
-	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE email = $1)", email).Scan(&exists)
-	if err == nil && exists {
-		return fmt.Errorf("Электронная почта уже используется")
-	}
-	return err
-}
-
-// checkPhoneUniqueness проверяет уникальность phone.
-func checkPhoneUniqueness(db *sql.DB, phone *string) error {
-	var exists bool
-	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE phone = $1)", phone).Scan(&exists)
-	if err == nil && exists {
-		return fmt.Errorf("Номер телефона уже используется")
-	}
-	return err
-}
-
+//// checkUsernameUniqueness проверяет уникальность username.
+//func checkUsernameUniqueness(db *sql.DB, username *string) error {
+//
+//	var exists bool
+//	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE username = $1)", username).Scan(&exists)
+//	if err == nil && exists {
+//		return fmt.Errorf("Имя пользователя уже занято")
+//	}
+//	return err
+//}
+//
+//// checkEmailUniqueness проверяет уникальность email.
+//func checkEmailUniqueness(db *sql.DB, email *string) error {
+//	var exists bool
+//	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE email = $1)", email).Scan(&exists)
+//	if err == nil && exists {
+//		return fmt.Errorf("Электронная почта уже используется")
+//	}
+//	return err
+//}
+//
+//// checkPhoneUniqueness проверяет уникальность phone.
 //func checkPhoneUniqueness(db *sql.DB, phone *string) error {
 //	var exists bool
 //	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE phone = $1)", phone).Scan(&exists)
-//	if err != nil {
-//		// Возвращаем обернутую ошибку для пользователя и разработчика
-//		return errors.Wrap(err, "Ошибка проверки телефона")
+//	if err == nil && exists {
+//		return fmt.Errorf("Номер телефона уже используется")
 //	}
-//
-//	if exists {
-//		// Возвращаем стандартную пользовательскую ошибку
-//		return errors.NewCustomError(errors.ErrPhoneInUse.Error(), nil)
-//	}
-//
-//	// Ошибок нет
-//	return nil
+//	return err
 //}
-
-///////////
-
-//func insertUser(db *sql.DB, username, password, email, phone *string) error {
-//	// Хэшируем пароль
-//	hash, err := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
-//	if err != nil {
-//		return fmt.Errorf("ошибка при создании хэша пароля: %w", err)
-//	}
 //
-//	// Преобразуем хэш пароля в строку
-//	//passwordHashStr := base64.StdEncoding.EncodeToString(hash)
+//func insertUser(db *sql.DB, userID *uuid.UUID, username, email, phone *string, passwordHash []byte) (*uuid.UUID, error) {
 //
 //	// Вставляем данные нового пользователя в базу
-//	_, err = db.Exec(
-//		`INSERT INTO users (username, password, email, phone, role, status, password_updated_at, created_at)
-//            VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6)`,
-//		username, hash, email, phone, time.Now().UTC(), time.Now().UTC(),
-//	)
+//	query := `
+//		INSERT INTO users (username, password, email, phone, role, status, password_updated_at, created_at)
+//		VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6) RETURNING id`
+//	err := db.QueryRow(query, username, passwordHash, email, phone, time.Now().UTC(), time.Now().UTC()).Scan(&userID)
 //	if err != nil {
-//		return fmt.Errorf("ошибка при сохранении пользователя в базу данных: %w", err)
+//		return nil, fmt.Errorf("database error: %w", err)
 //	}
-//
-//	return nil
+//	return userID, nil
 //}
 
-//func insertUser(db *sql.DB, username, email, phone *string, passwordHash []byte) error {
-//	_, err := db.Exec(
-//		`INSERT INTO users (username, password, email, phone, role, status, password_updated_at, created_at)
-//         VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6)`,
-//		username, passwordHash, email, phone, time.Now().UTC(), time.Now().UTC(),
-//	)
-//	if err != nil {
-//		return fmt.Errorf("database error: %w", err)
-//	}
-//	return nil
-//}
+// Проверка уникальности пользователя
+func checkUniqueness(db *sql.DB, user RegisterRequest) error {
 
-func insertUser(db *sql.DB, userID *uuid.UUID, username, email, phone *string, passwordHash []byte) (*uuid.UUID, error) {
-
-	// Вставляем данные нового пользователя в базу
-	query := `
-		INSERT INTO users (username, password, email, phone, role, status, password_updated_at, created_at) 
-		VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6) RETURNING id`
-	err := db.QueryRow(query, username, passwordHash, email, phone, time.Now().UTC(), time.Now().UTC()).Scan(&userID)
-	if err != nil {
-		return nil, fmt.Errorf("database error: %w", err)
+	if user.Username != nil {
+		if err := db_postgres.CheckUsernameUniqueness(db, user.Username); err != nil {
+			return err
+		}
 	}
-	return userID, nil
+
+	if user.Email != nil {
+		if err := db_postgres.CheckEmailUniqueness(db, user.Email); err != nil {
+			return err
+		}
+	}
+
+	if user.Phone != nil {
+		if err := db_postgres.CheckPhoneUniqueness(db, user.Phone); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-//func insertUser(db *sql.DB, user *RegisterRequest, passwordHash []byte) error {
-//	_, err := db.Exec(
-//		`INSERT INTO users (username, password, email, phone, role, status, password_updated_at, created_at)
-//         VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6)`,
-//		user.Username, passwordHash, user.Email, user.Phone, time.Now().UTC(), time.Now().UTC(),
-//	)
-//	if err != nil {
-//		return fmt.Errorf("database error: %w", err)
-//	}
-//	return nil
-//}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // RegisterByPhoneHandler обработчик для документации по упрощённой регистрации.
 //
@@ -173,7 +140,7 @@ func RegisterByPhoneHandler(db *sql.DB) gin.HandlerFunc {
 		}
 
 		// Проверка уникальности
-		if err := checkPhoneUniqueness(db, user.Phone); err != nil {
+		if err := db_postgres.CheckPhoneUniqueness(db, user.Phone); err != nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "Такой телефон уже занят"}) // c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
@@ -189,7 +156,7 @@ func RegisterByPhoneHandler(db *sql.DB) gin.HandlerFunc {
 		var userID *uuid.UUID
 
 		// Попытка добавить пользователя в базу
-		if userID, err = insertUser(db, userID, nil, nil, user.Phone, passwordHash); err != nil {
+		if userID, err = db_postgres.InsertUser(db, userID, nil, nil, user.Phone, passwordHash); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при регистрации пользователя"})
 			return
 		}
@@ -231,7 +198,7 @@ func RegisterByEmailHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		if err := checkEmailUniqueness(db, user.Email); err != nil {
+		if err := db_postgres.CheckEmailUniqueness(db, user.Email); err != nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "Такой почта уже существует"})
 			return
 		}
@@ -247,7 +214,7 @@ func RegisterByEmailHandler(db *sql.DB) gin.HandlerFunc {
 		var userID *uuid.UUID
 
 		// Попытка добавить пользователя в базу
-		if userID, err = insertUser(db, userID, nil, user.Email, nil, passwordHash); err != nil {
+		if userID, err = db_postgres.InsertUser(db, userID, nil, user.Email, nil, passwordHash); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при регистрации пользователя"})
 			return
 		}
@@ -256,12 +223,6 @@ func RegisterByEmailHandler(db *sql.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"message": "Регистрация прошла успешно"})
 	}
 }
-
-//// Регулярные выражения для email и phone
-//var (
-//	emailRegex = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
-//	phoneRegex = regexp.MustCompile(`^\+?\d{0,3}[-\s]?\(?\d{2,5}\)?[-\s]?\d{2,4}[-\s]?\d{2,4}[-\s]?\d{2,4}$`)
-//)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // рабочий код
@@ -340,7 +301,7 @@ func RegisterHandlerDB(db *sql.DB) gin.HandlerFunc {
 		var userID *uuid.UUID
 
 		// Попытка добавить пользователя в базу
-		if userID, err = insertUser(db, userID, user.Username, user.Email, user.Phone, passwordHash); err != nil {
+		if userID, err = db_postgres.InsertUser(db, userID, user.Username, user.Email, user.Phone, passwordHash); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при регистрации пользователя"})
 			return
 		}
@@ -348,19 +309,6 @@ func RegisterHandlerDB(db *sql.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при регистрации пользователя"})
 			return
 		}
-
-		//// Вставляем данные нового пользователя в базу
-		//query := `
-		//INSERT INTO users (username, password, email, phone, role, status, password_updated_at, created_at)
-		//VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6) RETURNING id`
-		//err = db.QueryRow(query, user.Username, hash, user.Email, user.Phone, time.Now().UTC(), time.Now().UTC()).Scan(&userID)
-
-		//// Вставляем данные нового пользователя в базу
-		//_, err = db.Exec(
-		//	`INSERT INTO users (username, password, email, phone, role, status, password_updated_at, created_at)
-		//    VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6)`,
-		//	user.Username, hash, user.Email, user.Phone, time.Now().UTC(), time.Now().UTC(),
-		//)
 
 		slog.Info("Пользователь успешно зарегистрирован", slog.String("userid", userID.String()))
 		c.JSON(http.StatusOK, gin.H{"message": "Регистрация прошла успешно"})
@@ -372,24 +320,16 @@ func validateFields(user *RegisterRequest, requiredFields []string) error {
 		switch field {
 		case "username":
 			return validation.ValidateUsername(user.Username)
-			//if user.Username == nil || len(*user.Username) < 3 {
-			//	return fmt.Errorf("Username must be at least 3 characters long")
-			//}
+
 		case "email":
 			return validation.ValidateEmail(user.Email)
-			//if user.Email == nil || !EmailRegex.MatchString(*user.Email) {
-			//	return fmt.Errorf("Invalid email address")
-			//}
+
 		case "phone":
 			return validation.ValidatePhone(user.Phone)
-			//if user.Phone == nil || !PhoneRegex.MatchString(*user.Phone) {
-			//	return fmt.Errorf("Invalid phone number")
-			//}
+
 		case "password":
 			return validation.ValidatePassword(user.Password)
-			//if user.Password == nil || len(*user.Password) < 6 {
-			//	return fmt.Errorf("Password must be at least 6 characters long")
-			//}
+
 		default:
 			return fmt.Errorf("Invalid field in required fields")
 		}
@@ -397,33 +337,75 @@ func validateFields(user *RegisterRequest, requiredFields []string) error {
 	return nil
 }
 
-// Проверка уникальности пользователя
-func checkUniqueness(db *sql.DB, user RegisterRequest) error {
-	var exists bool
+////////
 
-	if user.Username != nil {
-		err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE username = $1)", user.Username).Scan(&exists)
-		if err == nil && exists {
-			return fmt.Errorf("Имя пользователя уже занято")
-		}
-	}
+//func checkPhoneUniqueness(db *sql.DB, phone *string) error {
+//	var exists bool
+//	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE phone = $1)", phone).Scan(&exists)
+//	if err != nil {
+//		// Возвращаем обернутую ошибку для пользователя и разработчика
+//		return errors.Wrap(err, "Ошибка проверки телефона")
+//	}
+//
+//	if exists {
+//		// Возвращаем стандартную пользовательскую ошибку
+//		return errors.NewCustomError(errors.ErrPhoneInUse.Error(), nil)
+//	}
+//
+//	// Ошибок нет
+//	return nil
+//}
 
-	if user.Email != nil {
-		err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE email = $1)", user.Email).Scan(&exists)
-		if err == nil && exists {
-			return fmt.Errorf("Электронная почта уже используется")
-		}
-	}
+///////////
 
-	if user.Phone != nil {
-		err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE phone = $1)", user.Phone).Scan(&exists)
-		if err == nil && exists {
-			return fmt.Errorf("Номер телефона уже используется")
-		}
-	}
+//func insertUser(db *sql.DB, username, password, email, phone *string) error {
+//	// Хэшируем пароль
+//	hash, err := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
+//	if err != nil {
+//		return fmt.Errorf("ошибка при создании хэша пароля: %w", err)
+//	}
+//
+//	// Преобразуем хэш пароля в строку
+//	//passwordHashStr := base64.StdEncoding.EncodeToString(hash)
+//
+//	// Вставляем данные нового пользователя в базу
+//	_, err = db.Exec(
+//		`INSERT INTO users (username, password, email, phone, role, status, password_updated_at, created_at)
+//            VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6)`,
+//		username, hash, email, phone, time.Now().UTC(), time.Now().UTC(),
+//	)
+//	if err != nil {
+//		return fmt.Errorf("ошибка при сохранении пользователя в базу данных: %w", err)
+//	}
+//
+//	return nil
+//}
 
-	return nil
-}
+//func insertUser(db *sql.DB, username, email, phone *string, passwordHash []byte) error {
+//	_, err := db.Exec(
+//		`INSERT INTO users (username, password, email, phone, role, status, password_updated_at, created_at)
+//         VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6)`,
+//		username, passwordHash, email, phone, time.Now().UTC(), time.Now().UTC(),
+//	)
+//	if err != nil {
+//		return fmt.Errorf("database error: %w", err)
+//	}
+//	return nil
+//}
+
+///////////////////
+
+//func insertUser(db *sql.DB, user *RegisterRequest, passwordHash []byte) error {
+//	_, err := db.Exec(
+//		`INSERT INTO users (username, password, email, phone, role, status, password_updated_at, created_at)
+//         VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6)`,
+//		user.Username, passwordHash, user.Email, user.Phone, time.Now().UTC(), time.Now().UTC(),
+//	)
+//	if err != nil {
+//		return fmt.Errorf("database error: %w", err)
+//	}
+//	return nil
+//}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

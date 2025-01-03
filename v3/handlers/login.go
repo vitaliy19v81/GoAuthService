@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"apiP/v3/config"
+	"apiP/v3/db_postgres"
 	"apiP/v3/middleware"
 	"apiP/v3/security"
 	"apiP/v3/validation"
@@ -11,10 +12,8 @@ import (
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth_gin"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
-	"log"
+
 	"log/slog"
 	"net/http"
 	"time"
@@ -28,22 +27,6 @@ func isPasswordExpired(passwordUpdatedAt time.Time) bool {
 
 	// Проверяем, истёк ли срок действия пароля
 	return time.Since(passwordUpdatedAt) > (time.Hour * 24 * passwordExpirationDays)
-}
-
-// Генерация единого сообщения об ошибке в зависимости от окружения
-func handleError(c *gin.Context, err error, defaultMsg string, statusCode int) {
-	if config.Environment == "development" {
-		// В режиме разработки возвращаем подробности об ошибке
-		c.JSON(statusCode, gin.H{
-			"error":   defaultMsg,
-			"details": err.Error(),
-		})
-	} else {
-		// В продакшене возвращаем только общее сообщение
-		c.JSON(statusCode, gin.H{
-			"error": defaultMsg,
-		})
-	}
 }
 
 func GetLoginFieldsHandler() gin.HandlerFunc {
@@ -102,22 +85,26 @@ func determineLoginField(user *LoginRequest, possibleFields []string) (string, s
 	return "", "", fmt.Errorf("no valid login field provided")
 }
 
-func fetchUserFromDB(db *sql.DB, field, value string) (string, string, string, time.Time, error) {
-	var storedHash, storedRole string
-	var passwordUpdatedAt time.Time
-	var userID uuid.UUID
+//////////////////////
 
-	query := fmt.Sprintf("SELECT id, password, role, password_updated_at FROM users WHERE %s = $1", pq.QuoteIdentifier(field))
-	err := db.QueryRow(query, value).Scan(&userID, &storedHash, &storedRole, &passwordUpdatedAt)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return "", "", "", time.Time{}, fmt.Errorf("no user found for the provided field")
-		}
-		return "", "", "", time.Time{}, fmt.Errorf("database error: %w", err)
-	}
+//func fetchUserFromDB(db *sql.DB, field, value string) (string, string, string, time.Time, error) {
+//	var storedHash, storedRole string
+//	var passwordUpdatedAt time.Time
+//	var userID uuid.UUID
+//
+//	query := fmt.Sprintf("SELECT id, password, role, password_updated_at FROM users WHERE %s = $1", pq.QuoteIdentifier(field))
+//	err := db.QueryRow(query, value).Scan(&userID, &storedHash, &storedRole, &passwordUpdatedAt)
+//	if err != nil {
+//		if err == sql.ErrNoRows {
+//			return "", "", "", time.Time{}, fmt.Errorf("no user found for the provided field")
+//		}
+//		return "", "", "", time.Time{}, fmt.Errorf("database error: %w", err)
+//	}
+//
+//	return userID.String(), storedHash, storedRole, passwordUpdatedAt, nil
+//}
 
-	return userID.String(), storedHash, storedRole, passwordUpdatedAt, nil
-}
+///////////////////////////////////////////////////
 
 // LoginHandlerDB авторизует пользователя с помощью логина, пароля и возвращает токен доступа.
 //
@@ -153,37 +140,21 @@ func LoginHandlerDB(db *sql.DB) gin.HandlerFunc {
 		if err := c.BindJSON(&user); err != nil {
 			slog.Error("Ошибка данных запроса", slog.Any("err", err))
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Ошибка данных запроса"})
-			//handleError(c, err, "Ошибка данных запроса", http.StatusBadRequest)
 			return
 		}
 		//log.Printf("Полученные данные JSON: %+v", user) // Логируем данные после успешного парсинга
 
-		// Проверяем, что указан пароль и его длина достаточна
-		if user.Password == nil {
-			slog.Warn("Пароль слишком короткий", slog.Any("password_length", nil))
+		if err := validation.ValidatePassword(user.Password); err != nil {
+			slog.Warn("Пароль слишком короткий", slog.Any("password_length", err))
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Пароль слишком короткий"})
-			//handleError(c, fmt.Errorf("password too short"), "Пароль слишком короткий", http.StatusBadRequest)
 			return
-		} else {
-			if len(*user.Password) < 6 {
-				slog.Warn("Пароль слишком короткий", slog.Any("password_length", len(*user.Password)))
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Пароль слишком короткий"})
-				//handleError(c, fmt.Errorf("password too short"), "Пароль слишком короткий", http.StatusBadRequest)
-				return
-			}
 		}
-
-		//if err := validation.ValidatePassword(user.Password); err != nil {
-		//	slog.Warn("Пароль слишком короткий", slog.Any("password_length", err))
-		//	c.JSON(http.StatusBadRequest, gin.H{"error": "Пароль слишком короткий"})
-		//}
 
 		// Получаем список допустимых полей для логина
 		possibleFields := config.GetPossibleFields()
 		if len(possibleFields) == 0 {
 			slog.Error("Ошибка конфигурации сервера")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка конфигурации сервера"})
-			//handleError(c, fmt.Errorf("no login fields configured"), "Ошибка конфигурации сервера", http.StatusInternalServerError)
 			return
 		}
 
@@ -191,7 +162,6 @@ func LoginHandlerDB(db *sql.DB) gin.HandlerFunc {
 		if err != nil {
 			slog.Warn("Неверные данные для входа", slog.Any("err", err))
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные данные для входа"})
-			//handleError(c, err, "Неверные данные для входа", http.StatusUnauthorized)
 			return
 		}
 
@@ -199,18 +169,17 @@ func LoginHandlerDB(db *sql.DB) gin.HandlerFunc {
 			key := config.PhoneSecretKey // os.Getenv("PHONE_SECRET_KEY")
 
 			value, err = security.EncryptPhoneNumber(value, key)
-			log.Println(value)
+
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при шифровании телефона"})
 				return
 			}
 		}
 
-		userID, storedHash, storedRole, passwordUpdatedAt, err := fetchUserFromDB(db, field, value)
+		userID, storedHash, storedRole, passwordUpdatedAt, err := db_postgres.FetchUserFromDB(db, field, value)
 		if err != nil {
 			slog.Warn("Неверные учетные данные", slog.Any("err", err))
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные учетные данные"})
-			//handleError(c, err, "Неверные учетные данные", http.StatusUnauthorized)
 			return
 		}
 
@@ -219,7 +188,6 @@ func LoginHandlerDB(db *sql.DB) gin.HandlerFunc {
 		if err != nil {
 			slog.Warn("Неверные учетные данные", slog.Any("err", err))
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные учетные данные"})
-			//handleError(c, err, "Неверные учетные данные", http.StatusUnauthorized)
 			return
 		}
 
@@ -227,21 +195,14 @@ func LoginHandlerDB(db *sql.DB) gin.HandlerFunc {
 		if isPasswordExpired(passwordUpdatedAt) {
 			slog.Warn("Срок действия пароля истёк", slog.String("userID", userID))
 			c.JSON(http.StatusForbidden, gin.H{"error": "Срок действия пароля истёк. Пожалуйста, смените пароль."})
-			//handleError(c, fmt.Errorf("password expired"), "Срок действия пароля истёк. Пожалуйста, смените пароль.", http.StatusForbidden)
 			return
 		}
-
-		//if err != nil {
-		//	handleError(c, err, "Ошибка при авторизации", http.StatusInternalServerError)
-		//	return
-		//}
 
 		// Генерация JWT
 		token, err := middleware.GenerateJWT(userID, storedRole) // userID.String()
 		if err != nil {
 			slog.Error("Ошибка при генерации токена", slog.String("userID", userID), slog.Any("err", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при генерации токена"})
-			//handleError(c, err, "Ошибка при генерации токена", http.StatusInternalServerError)
 			return
 		}
 
@@ -249,7 +210,6 @@ func LoginHandlerDB(db *sql.DB) gin.HandlerFunc {
 		if err != nil {
 			slog.Error("Ошибка при генерации токена", slog.String("userID", userID), slog.Any("err", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при генерации токена"})
-			//handleError(c, err, "Ошибка при генерации токена", http.StatusInternalServerError)
 			return
 		}
 

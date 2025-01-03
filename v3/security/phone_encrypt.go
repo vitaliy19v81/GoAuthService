@@ -8,27 +8,33 @@ import (
 	"errors"
 )
 
-// generateIV детерминированно генерирует IV на основе телефона
+// generateIV детерминированно генерирует IV на основе телефона.
+// Для этого используется хэш SHA-256, из которого берутся первые 16 байт.
 func generateIV(phone string) ([]byte, error) {
 	hash := sha256.Sum256([]byte(phone))
 	return hash[:aes.BlockSize], nil // Берем первые 16 байт для IV
 }
 
-// EncryptPhoneNumber шифрует телефон с возможностью последующего сравнения
+// EncryptPhoneNumber шифрует телефон с использованием AES в режиме CBC.
+// Функция использует фиксированный IV, генерируемый на основе телефона.
+// Это обеспечивает детерминированность шифрования (один и тот же телефон даст одинаковый шифр).
 func EncryptPhoneNumber(phone, key string) (string, error) {
+	// Создаем AES-блок на основе переданного ключа
 	block, err := aes.NewCipher([]byte(key))
 	if err != nil {
 		return "", err
 	}
 
+	// Генерируем IV для шифрования
 	iv, err := generateIV(phone)
 	if err != nil {
 		return "", err
 	}
 
+	// Создаем CBC-шифровальщик
 	stream := cipher.NewCBCEncrypter(block, iv)
 
-	// Выравниваем данные до размера блока AES
+	// Выравниваем данные до размера блока AES (PKCS7 Padding)
 	paddingSize := aes.BlockSize - len(phone)%aes.BlockSize
 	padding := make([]byte, paddingSize)
 	for i := range padding {
@@ -36,34 +42,41 @@ func EncryptPhoneNumber(phone, key string) (string, error) {
 	}
 	plainText := append([]byte(phone), padding...)
 
+	// Шифруем данные
 	cipherText := make([]byte, len(plainText))
 	stream.CryptBlocks(cipherText, plainText)
 
+	// Кодируем шифрованный текст в base64 для удобного хранения
 	return base64.StdEncoding.EncodeToString(cipherText), nil
 }
 
-// DecryptPhoneNumber расшифровывает телефон
+// DecryptPhoneNumber расшифровывает телефон, зашифрованный с помощью EncryptPhoneNumber.
+// Использует тот же ключ и IV, что и для шифрования.
 func DecryptPhoneNumber(encryptedPhone, phone, key string) (string, error) {
+	// Создаем AES-блок на основе переданного ключа
 	block, err := aes.NewCipher([]byte(key))
 	if err != nil {
 		return "", err
 	}
 
+	// Генерируем IV на основе телефона
 	iv, err := generateIV(phone)
 	if err != nil {
 		return "", err
 	}
 
+	// Декодируем base64-строку в шифрованный текст
 	cipherText, err := base64.StdEncoding.DecodeString(encryptedPhone)
 	if err != nil {
 		return "", err
 	}
 
+	// Создаем CBC-расшифровальщик
 	plainText := make([]byte, len(cipherText))
 	stream := cipher.NewCBCDecrypter(block, iv)
 	stream.CryptBlocks(plainText, cipherText)
 
-	// Убираем добавленный padding
+	// Убираем добавленный padding  (PKCS7 Unpadding)
 	paddingSize := int(plainText[len(plainText)-1])
 	if paddingSize > aes.BlockSize || paddingSize == 0 {
 		return "", errors.New("invalid padding")
