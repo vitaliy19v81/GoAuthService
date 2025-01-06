@@ -22,50 +22,6 @@ import (
 //)
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-//// checkUsernameUniqueness проверяет уникальность username.
-//func checkUsernameUniqueness(db *sql.DB, username *string) error {
-//
-//	var exists bool
-//	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE username = $1)", username).Scan(&exists)
-//	if err == nil && exists {
-//		return fmt.Errorf("Имя пользователя уже занято")
-//	}
-//	return err
-//}
-//
-//// checkEmailUniqueness проверяет уникальность email.
-//func checkEmailUniqueness(db *sql.DB, email *string) error {
-//	var exists bool
-//	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE email = $1)", email).Scan(&exists)
-//	if err == nil && exists {
-//		return fmt.Errorf("Электронная почта уже используется")
-//	}
-//	return err
-//}
-//
-//// checkPhoneUniqueness проверяет уникальность phone.
-//func checkPhoneUniqueness(db *sql.DB, phone *string) error {
-//	var exists bool
-//	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE phone = $1)", phone).Scan(&exists)
-//	if err == nil && exists {
-//		return fmt.Errorf("Номер телефона уже используется")
-//	}
-//	return err
-//}
-//
-//func insertUser(db *sql.DB, userID *uuid.UUID, username, email, phone *string, passwordHash []byte) (*uuid.UUID, error) {
-//
-//	// Вставляем данные нового пользователя в базу
-//	query := `
-//		INSERT INTO users (username, password, email, phone, role, status, password_updated_at, created_at)
-//		VALUES ($1, $2, $3, $4, 'user', 'active', $5, $6) RETURNING id`
-//	err := db.QueryRow(query, username, passwordHash, email, phone, time.Now().UTC(), time.Now().UTC()).Scan(&userID)
-//	if err != nil {
-//		return nil, fmt.Errorf("database error: %w", err)
-//	}
-//	return userID, nil
-//}
-
 // Проверка уникальности пользователя
 func checkUniqueness(db *sql.DB, user RegisterRequest) error {
 
@@ -92,80 +48,6 @@ func checkUniqueness(db *sql.DB, user RegisterRequest) error {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// RegisterByPhoneHandler обработчик для документации по упрощённой регистрации.
-//
-// @Summary Упрощённая регистрация нового пользователя
-// @Description Регистрирует нового пользователя, указывая только телефон и пароль.
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Param user body RegisterRequestPhone true "Данные пользователя для упрощённой регистрации"
-// @Success 200 {object} map[string]string "message: Регистрация прошла успешно"
-// @Failure 400 {object} map[string]string "error: Неверные данные запроса"
-// @Failure 500 {object} map[string]string "error: Ошибка при регистрации пользователя"
-// @Router /api/auth/register/phone [post]
-func RegisterByPhoneHandler(db *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var user RegisterRequestPhone
-
-		if err := c.BindJSON(&user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверные данные запроса"})
-			return
-		}
-
-		// Валидация обязательных полей
-		if err := validation.ValidatePassword(user.Password); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный телефон или пароль"})
-			return
-		}
-		if err := validation.ValidatePhone(user.Phone); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный телефон или пароль"})
-			return
-		}
-
-		var phone string
-		var err error
-		key := config.PhoneSecretKey // os.Getenv("PHONE_SECRET_KEY")
-		if user.Phone != nil {
-			if *user.Phone == "" {
-				user.Phone = nil
-			} else {
-				phone, err = security.EncryptPhoneNumber(*user.Phone, key)
-				user.Phone = &phone
-				if err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при шифровании телефона"})
-					return
-				}
-			}
-		}
-
-		// Проверка уникальности
-		if err := db_postgres.CheckPhoneUniqueness(db, user.Phone); err != nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "Такой телефон уже занят"}) // c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-			return
-		}
-
-		// Хэширование пароля
-		passwordHash, err := bcrypt.GenerateFromPassword([]byte(*user.Password), bcrypt.DefaultCost)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		// ID нового пользователя
-		var userID *uuid.UUID
-
-		// Попытка добавить пользователя в базу
-		if userID, err = db_postgres.InsertUser(db, userID, nil, nil, user.Phone, passwordHash); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при регистрации пользователя"})
-			return
-		}
-
-		slog.Info("Пользователь успешно зарегистрирован", slog.String("userid", userID.String()))
-		c.JSON(http.StatusOK, gin.H{"message": "Регистрация прошла успешно"})
-	}
-}
-
 // RegisterByEmailHandler обработчик для документации по упрощённой регистрации.
 //
 // @Summary Упрощённая регистрация нового пользователя
@@ -178,54 +60,256 @@ func RegisterByPhoneHandler(db *sql.DB) gin.HandlerFunc {
 // @Failure 400 {object} map[string]string "error: Неверные данные запроса"
 // @Failure 500 {object} map[string]string "error: Ошибка при регистрации пользователя"
 // @Router /api/auth/register/emile [post]
-func RegisterByEmailHandler(db *sql.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var user RegisterRequestEmail
+func (h *Handler) RegisterByEmailHandler(c *gin.Context) {
+	var user RegisterRequestEmail
 
-		if err := c.BindJSON(&user); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверные данные запроса"})
-			return
-		}
-
-		// Валидация обязательных полей
-		if err := validation.ValidatePassword(user.Password); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный почта или пароль"})
-			return
-		}
-
-		if err := validation.ValidateEmail(user.Email); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный почта или пароль"})
-			return
-		}
-
-		if err := db_postgres.CheckEmailUniqueness(db, user.Email); err != nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "Такой почта уже существует"})
-			return
-		}
-
-		// Хэширование пароля
-		passwordHash, err := bcrypt.GenerateFromPassword([]byte(*user.Password), bcrypt.DefaultCost)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		// ID нового пользователя
-		var userID *uuid.UUID
-
-		// Попытка добавить пользователя в базу
-		if userID, err = db_postgres.InsertUser(db, userID, nil, user.Email, nil, passwordHash); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при регистрации пользователя"})
-			return
-		}
-
-		slog.Info("Пользователь успешно зарегистрирован", slog.String("userid", userID.String()))
-		c.JSON(http.StatusOK, gin.H{"message": "Регистрация прошла успешно"})
+	if err := c.BindJSON(&user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверные данные запроса"})
+		return
 	}
+
+	// Валидация обязательных полей
+	if err := validation.ValidatePassword(user.Password); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный почта или пароль"})
+		return
+	}
+
+	if err := validation.ValidateEmail(user.Email); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный почта или пароль"})
+		return
+	}
+
+	if err := h.userRepo.CheckEmailUniqueness(user.Email); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Такой почта уже существует"})
+		return
+	}
+
+	// Хэширование пароля
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(*user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// ID нового пользователя
+	var userID *uuid.UUID
+
+	// Попытка добавить пользователя в базу
+	if userID, err = h.userRepo.InsertUser(userID, nil, user.Email, nil, passwordHash); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при регистрации пользователя"})
+		return
+	}
+
+	slog.Info("Пользователь успешно зарегистрирован", slog.String("userid", userID.String()))
+	c.JSON(http.StatusOK, gin.H{"message": "Регистрация прошла успешно"})
+}
+
+// RegisterByPhoneHandler обработчик для документации по упрощённой регистрации.
+//
+// @Summary Упрощённая регистрация нового пользователя
+// @Description Регистрирует нового пользователя, указывая только телефон и пароль.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param user body RegisterRequestPhone true "Данные пользователя для упрощённой регистрации"
+// @Success 200 {object} map[string]string "message: Регистрация прошла успешно"
+// @Failure 400 {object} map[string]string "error: Неверные данные запроса"
+// @Failure 500 {object} map[string]string "error: Ошибка при регистрации пользователя"
+// @Router /api/auth/register/phone [post]
+func (h *Handler) RegisterByPhoneHandler(c *gin.Context) {
+	var user RegisterRequestPhone
+
+	if err := c.BindJSON(&user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверные данные запроса"})
+		return
+	}
+
+	// Валидация обязательных полей
+	if err := validation.ValidatePassword(user.Password); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный телефон или пароль"})
+		return
+	}
+	if err := validation.ValidatePhone(user.Phone); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный телефон или пароль"})
+		return
+	}
+
+	var phone string
+	var err error
+	key := config.PhoneSecretKey // os.Getenv("PHONE_SECRET_KEY")
+	if user.Phone != nil {
+		if *user.Phone == "" {
+			user.Phone = nil
+		} else {
+			phone, err = security.EncryptPhoneNumber(*user.Phone, key)
+			user.Phone = &phone
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при шифровании телефона"})
+				return
+			}
+		}
+	}
+
+	// Проверка уникальности
+	if err := h.userRepo.CheckPhoneUniqueness(user.Phone); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Такой телефон уже занят"}) // c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Хэширование пароля
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(*user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// ID нового пользователя
+	var userID *uuid.UUID
+
+	// Попытка добавить пользователя в базу
+	if userID, err = h.userRepo.InsertUser(userID, nil, nil, user.Phone, passwordHash); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при регистрации пользователя"})
+		return
+	}
+
+	slog.Info("Пользователь успешно зарегистрирован", slog.String("userid", userID.String()))
+	c.JSON(http.StatusOK, gin.H{"message": "Регистрация прошла успешно"})
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // рабочий код
+
+//// RegisterByEmailHandler обработчик для документации по упрощённой регистрации.
+////
+//// @Summary Упрощённая регистрация нового пользователя
+//// @Description Регистрирует нового пользователя, указывая только почта и пароль.
+//// @Tags auth
+//// @Accept json
+//// @Produce json
+//// @Param user body RegisterRequestEmail true "Данные пользователя для упрощённой регистрации"
+//// @Success 200 {object} map[string]string "message: Регистрация прошла успешно"
+//// @Failure 400 {object} map[string]string "error: Неверные данные запроса"
+//// @Failure 500 {object} map[string]string "error: Ошибка при регистрации пользователя"
+//// @Router /api/auth/register/emile [post]
+//func RegisterByEmailHandler(db *sql.DB) gin.HandlerFunc {
+//	return func(c *gin.Context) {
+//		var user RegisterRequestEmail
+//
+//		if err := c.BindJSON(&user); err != nil {
+//			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверные данные запроса"})
+//			return
+//		}
+//
+//		// Валидация обязательных полей
+//		if err := validation.ValidatePassword(user.Password); err != nil {
+//			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный почта или пароль"})
+//			return
+//		}
+//
+//		if err := validation.ValidateEmail(user.Email); err != nil {
+//			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный почта или пароль"})
+//			return
+//		}
+//
+//		if err := db_postgres.CheckEmailUniqueness(db, user.Email); err != nil {
+//			c.JSON(http.StatusConflict, gin.H{"error": "Такой почта уже существует"})
+//			return
+//		}
+//
+//		// Хэширование пароля
+//		passwordHash, err := bcrypt.GenerateFromPassword([]byte(*user.Password), bcrypt.DefaultCost)
+//		if err != nil {
+//			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+//			return
+//		}
+//
+//		// ID нового пользователя
+//		var userID *uuid.UUID
+//
+//		// Попытка добавить пользователя в базу
+//		if userID, err = db_postgres.InsertUser(db, userID, nil, user.Email, nil, passwordHash); err != nil {
+//			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при регистрации пользователя"})
+//			return
+//		}
+//
+//		slog.Info("Пользователь успешно зарегистрирован", slog.String("userid", userID.String()))
+//		c.JSON(http.StatusOK, gin.H{"message": "Регистрация прошла успешно"})
+//	}
+//}
+
+//// RegisterByPhoneHandler обработчик для документации по упрощённой регистрации.
+////
+//// @Summary Упрощённая регистрация нового пользователя
+//// @Description Регистрирует нового пользователя, указывая только телефон и пароль.
+//// @Tags auth
+//// @Accept json
+//// @Produce json
+//// @Param user body RegisterRequestPhone true "Данные пользователя для упрощённой регистрации"
+//// @Success 200 {object} map[string]string "message: Регистрация прошла успешно"
+//// @Failure 400 {object} map[string]string "error: Неверные данные запроса"
+//// @Failure 500 {object} map[string]string "error: Ошибка при регистрации пользователя"
+//// @Router /api/auth/register/phone [post]
+//func RegisterByPhoneHandler(db *sql.DB) gin.HandlerFunc {
+//	return func(c *gin.Context) {
+//		var user RegisterRequestPhone
+//
+//		if err := c.BindJSON(&user); err != nil {
+//			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверные данные запроса"})
+//			return
+//		}
+//
+//		// Валидация обязательных полей
+//		if err := validation.ValidatePassword(user.Password); err != nil {
+//			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный телефон или пароль"})
+//			return
+//		}
+//		if err := validation.ValidatePhone(user.Phone); err != nil {
+//			c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный телефон или пароль"})
+//			return
+//		}
+//
+//		var phone string
+//		var err error
+//		key := config.PhoneSecretKey // os.Getenv("PHONE_SECRET_KEY")
+//		if user.Phone != nil {
+//			if *user.Phone == "" {
+//				user.Phone = nil
+//			} else {
+//				phone, err = security.EncryptPhoneNumber(*user.Phone, key)
+//				user.Phone = &phone
+//				if err != nil {
+//					c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при шифровании телефона"})
+//					return
+//				}
+//			}
+//		}
+//
+//		// Проверка уникальности
+//		if err := db_postgres.CheckPhoneUniqueness(db, user.Phone); err != nil {
+//			c.JSON(http.StatusConflict, gin.H{"error": "Такой телефон уже занят"}) // c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+//			return
+//		}
+//
+//		// Хэширование пароля
+//		passwordHash, err := bcrypt.GenerateFromPassword([]byte(*user.Password), bcrypt.DefaultCost)
+//		if err != nil {
+//			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+//			return
+//		}
+//
+//		// ID нового пользователя
+//		var userID *uuid.UUID
+//
+//		// Попытка добавить пользователя в базу
+//		if userID, err = db_postgres.InsertUser(db, userID, nil, nil, user.Phone, passwordHash); err != nil {
+//			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при регистрации пользователя"})
+//			return
+//		}
+//
+//		slog.Info("Пользователь успешно зарегистрирован", slog.String("userid", userID.String()))
+//		c.JSON(http.StatusOK, gin.H{"message": "Регистрация прошла успешно"})
+//	}
+//}
 
 // RegisterHandlerDB обработчик для регистрации пользователя.
 //

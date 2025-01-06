@@ -3,38 +3,28 @@ package security
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/sha256"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 )
 
-// generateIV детерминированно генерирует IV на основе телефона.
-// Для этого используется хэш SHA-256, из которого берутся первые 16 байт.
-func generateIV(phone string) ([]byte, error) {
-	hash := sha256.Sum256([]byte(phone))
-	return hash[:aes.BlockSize], nil // Берем первые 16 байт для IV
-}
-
 // EncryptPhoneNumber шифрует телефон с использованием AES в режиме CBC.
-// Функция использует фиксированный IV, генерируемый на основе телефона.
-// Это обеспечивает детерминированность шифрования (один и тот же телефон даст одинаковый шифр).
+// IV генерируется случайно и добавляется к результату.
 func EncryptPhoneNumber(phone, key string) (string, error) {
 	// Создаем AES-блок на основе переданного ключа
 	block, err := aes.NewCipher([]byte(key))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create AES cipher: %w", err)
 	}
 
-	// Генерируем IV для шифрования
-	iv, err := generateIV(phone)
-	if err != nil {
-		return "", err
+	// Генерируем случайный IV
+	iv := make([]byte, aes.BlockSize)
+	if _, err := rand.Read(iv); err != nil {
+		return "", fmt.Errorf("failed to generate IV: %w", err)
 	}
 
-	// Создаем CBC-шифровальщик
-	stream := cipher.NewCBCEncrypter(block, iv)
-
-	// Выравниваем данные до размера блока AES (PKCS7 Padding)
+	// Добавляем PKCS7 padding
 	paddingSize := aes.BlockSize - len(phone)%aes.BlockSize
 	padding := make([]byte, paddingSize)
 	for i := range padding {
@@ -44,121 +34,50 @@ func EncryptPhoneNumber(phone, key string) (string, error) {
 
 	// Шифруем данные
 	cipherText := make([]byte, len(plainText))
+	stream := cipher.NewCBCEncrypter(block, iv)
 	stream.CryptBlocks(cipherText, plainText)
 
-	// Кодируем шифрованный текст в base64 для удобного хранения
-	return base64.StdEncoding.EncodeToString(cipherText), nil
+	// Присоединяем IV к шифрованному тексту
+	result := append(iv, cipherText...)
+
+	// Кодируем результат в Base64 для удобного хранения
+	return base64.StdEncoding.EncodeToString(result), nil
 }
 
 // DecryptPhoneNumber расшифровывает телефон, зашифрованный с помощью EncryptPhoneNumber.
-// Использует тот же ключ и IV, что и для шифрования.
-func DecryptPhoneNumber(encryptedPhone, phone, key string) (string, error) {
+// IV извлекается из шифрованных данных.
+func DecryptPhoneNumber(encryptedPhone, key string) (string, error) {
+	// Декодируем base64-строку в шифрованный текст
+	data, err := base64.StdEncoding.DecodeString(encryptedPhone)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode base64 encrypted phone: %w", err)
+	}
+
+	// Проверяем, что длина данных корректна
+	if len(data) < aes.BlockSize || len(data)%aes.BlockSize != 0 {
+		return "", errors.New("invalid encrypted data length")
+	}
+
+	// Извлекаем IV из первых 16 байт
+	iv := data[:aes.BlockSize]
+	cipherText := data[aes.BlockSize:]
+
 	// Создаем AES-блок на основе переданного ключа
 	block, err := aes.NewCipher([]byte(key))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create AES cipher: %w", err)
 	}
 
-	// Генерируем IV на основе телефона
-	iv, err := generateIV(phone)
-	if err != nil {
-		return "", err
-	}
-
-	// Декодируем base64-строку в шифрованный текст
-	cipherText, err := base64.StdEncoding.DecodeString(encryptedPhone)
-	if err != nil {
-		return "", err
-	}
-
-	// Создаем CBC-расшифровальщик
+	// Расшифровываем данные
 	plainText := make([]byte, len(cipherText))
 	stream := cipher.NewCBCDecrypter(block, iv)
 	stream.CryptBlocks(plainText, cipherText)
 
-	// Убираем добавленный padding  (PKCS7 Unpadding)
+	// Убираем PKCS7 padding
 	paddingSize := int(plainText[len(plainText)-1])
-	if paddingSize > aes.BlockSize || paddingSize == 0 {
+	if paddingSize > aes.BlockSize || paddingSize > len(plainText) || paddingSize == 0 {
 		return "", errors.New("invalid padding")
 	}
+
 	return string(plainText[:len(plainText)-paddingSize]), nil
 }
-
-//package security
-//
-//import (
-//	"crypto/aes"
-//	"crypto/cipher"
-//	"crypto/hmac"
-//	"crypto/sha256"
-//	"encoding/base64"
-//	"encoding/hex"
-//	"errors"
-//	"fmt"
-//)
-//
-//
-//
-//// EncryptPhoneNumber детерминированно шифрует номер телефона
-//func EncryptPhoneNumber(phone, key string) (string, error) {
-//	if len(key) == 0 {
-//		return "", errors.New("ключ не может быть пустым")
-//	}
-//
-//	h := hmac.New(sha256.New, []byte(key))
-//	h.Write([]byte(phone))
-//	return hex.EncodeToString(h.Sum(nil)), nil
-//}
-//
-//// decryptPhoneNumber расшифровывает телефонный номер, зашифрованный с использованием AES.
-//func decryptPhoneNumber(encryptedPhone, key string) (string, error) {
-//	// Декодируем зашифрованный текст из Base64
-//	data, err := base64.StdEncoding.DecodeString(encryptedPhone)
-//	if err != nil {
-//		return "", err
-//	}
-//
-//	// Убеждаемся, что длина данных корректна
-//	if len(data) < aes.BlockSize {
-//		return "", errors.New("encrypted phone data is too short")
-//	}
-//
-//	// Извлекаем IV и зашифрованный текст
-//	iv := data[:aes.BlockSize]
-//	ciphertext := data[aes.BlockSize:]
-//
-//	// Создаем AES-блок расшифровки
-//	block, err := aes.NewCipher([]byte(key))
-//	if err != nil {
-//		return "", err
-//	}
-//
-//	// Создаем расшифратор и расшифровываем данные
-//	stream := cipher.NewCFBDecrypter(block, iv)
-//	plaintext := make([]byte, len(ciphertext))
-//	stream.XORKeyStream(plaintext, ciphertext)
-//
-//	return string(plaintext), nil
-//}
-//
-//func Runcipher() {
-//	phone := "+1234567890"
-//	//key := "thisis32bitlongpassphrase1234567" // Должен быть длиной 32 байта для AES-256
-//	key := "12345678901234567890123456789012"
-//
-//	// Шифруем телефонный номер
-//	encryptedPhone, err := EncryptPhoneNumber(phone, key)
-//	if err != nil {
-//		fmt.Println("Ошибка при шифровании телефона:", err)
-//		return
-//	}
-//	fmt.Println("Зашифрованный телефон:", encryptedPhone)
-//
-//	// Расшифровываем телефонный номер
-//	decryptedPhone, err := decryptPhoneNumber(encryptedPhone, key)
-//	if err != nil {
-//		fmt.Println("Ошибка при расшифровке телефона:", err)
-//		return
-//	}
-//	fmt.Println("Расшифрованный телефон:", decryptedPhone)
-//}

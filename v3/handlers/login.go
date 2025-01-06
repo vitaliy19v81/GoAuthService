@@ -3,18 +3,15 @@ package handlers
 
 import (
 	"apiP/v3/config"
-	"apiP/v3/db_postgres"
 	"apiP/v3/middleware"
 	"apiP/v3/security"
 	"apiP/v3/validation"
-	"database/sql"
 	"fmt"
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth_gin"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 
-	"log/slog"
 	"net/http"
 	"time"
 )
@@ -85,6 +82,244 @@ func determineLoginField(user *LoginRequest, possibleFields []string) (string, s
 	return "", "", fmt.Errorf("no valid login field provided")
 }
 
+// LoginHandler авторизует пользователя с помощью логина и пароля, возвращая токен доступа.
+//
+// @Summary Авторизация пользователя
+// @Description Авторизация с использованием логина и пароля. Возвращает JWT токен доступа и устанавливает refresh токен в Cookie.
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body handlers.LoginRequest true "Данные для авторизации"
+// @Success 200 {object} map[string]string "Успешный ответ с токеном доступа"
+// @Failure 400 {object} map[string]string "Ошибка данных запроса"
+// @Failure 401 {object} map[string]string "Неверные учетные данные"
+// @Failure 403 {object} map[string]string "Срок действия пароля истёк"
+// @Failure 429 {object} map[string]string "Слишком много запросов"
+// @Failure 500 {object} map[string]string "Ошибка сервера"
+// @Header 200 {string} Authorization "Bearer <токен доступа>"
+// @Router /api/auth/login [post]
+func (h *Handler) LoginHandler(c *gin.Context) {
+	//func LoginHandler(userRepo repository.UserRepository) gin.HandlerFunc {
+	// Настраиваем лимитер для ограничения запросов
+	limiter := tollbooth.NewLimiter(5, nil) // Максимум 5 запросов в минуту
+	limiter.SetMessage("Слишком много запросов, попробуйте позже.")
+	limiter.SetMessageContentType("application/json")
+
+	// Применяем rate limiting
+	tollbooth_gin.LimitHandler(limiter)(c)
+	if c.IsAborted() {
+		return
+	}
+
+	// Читаем данные запроса
+	var user LoginRequest
+	if err := c.BindJSON(&user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Ошибка данных запроса"})
+		return
+	}
+
+	if err := validation.ValidatePassword(user.Password); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Пароль слишком короткий"})
+		return
+	}
+
+	// Получаем список допустимых полей для логина
+	possibleFields := config.GetPossibleFields()
+	if len(possibleFields) == 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка конфигурации сервера"})
+		return
+	}
+
+	field, value, err := determineLoginField(&user, possibleFields)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные данные для входа"})
+		return
+	}
+
+	if field == "phone" {
+		key := config.PhoneSecretKey
+		value, err = security.EncryptPhoneNumber(value, key)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при шифровании телефона"})
+			return
+		}
+	}
+
+	// Получаем пользователя из репозитория
+	userID, storedHash, storedRole, passwordUpdatedAt, err := h.userRepo.FetchUser(field, value)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные учетные данные"})
+		return
+	}
+
+	// Проверяем пароль
+	err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(*user.Password))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные учетные данные"})
+		return
+	}
+
+	// Проверяем срок действия пароля
+	if isPasswordExpired(passwordUpdatedAt) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Срок действия пароля истёк. Пожалуйста, смените пароль."})
+		return
+	}
+
+	// Генерация JWT
+	token, err := middleware.GenerateJWT(userID, storedRole)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при генерации токена"})
+		return
+	}
+
+	refreshToken, err := middleware.GenerateRefreshToken(userID, storedRole)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при генерации токена"})
+		return
+	}
+
+	// Настройка Cookie для Refresh токена
+	isSecure := config.Environment == "production"
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "refreshToken",
+		Value:    refreshToken,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	c.Header("Authorization", fmt.Sprintf("Bearer %s", token))
+	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
+}
+
+// рабочая функция
+
+//// LoginHandlerDB авторизует пользователя с помощью логина, пароля и возвращает токен доступа.
+////
+//// @Summary Авторизация пользователя
+//// @Description Авторизация с использованием логина и пароля. Возвращает JWT токен доступа и устанавливает refresh токен в Cookie.
+//// @Tags Authentication
+//// @Accept json
+//// @Produce json
+//// @Param request body handlers.LoginRequest true "Данные для авторизации"
+//// @Success 200 {object} map[string]string "Успешный ответ с токеном доступа"
+//// @Failure 400 {object} map[string]string "Ошибка данных запроса"
+//// @Failure 401 {object} map[string]string "Неверные учетные данные"
+//// @Failure 403 {object} map[string]string "Срок действия пароля истёк"
+//// @Failure 429 {object} map[string]string "Слишком много запросов"
+//// @Failure 500 {object} map[string]string "Ошибка сервера"
+//// @Header 200 {string} Authorization "Bearer <токен доступа>"
+//// @Router /api/auth/login [post]
+//func LoginHandlerDB(db *sql.DB) gin.HandlerFunc {
+//	// Настраиваем лимитер для ограничения запросов
+//	limiter := tollbooth.NewLimiter(5, nil) // Максимум 5 запросов в минуту
+//	limiter.SetMessage("Слишком много запросов, попробуйте позже.")
+//	limiter.SetMessageContentType("application/json")
+//
+//	return func(c *gin.Context) {
+//		// Применяем rate limiting
+//		tollbooth_gin.LimitHandler(limiter)(c)
+//		if c.IsAborted() {
+//			return
+//		}
+//
+//		// Читаем данные запроса
+//		var user LoginRequest
+//		if err := c.BindJSON(&user); err != nil {
+//			slog.Error("Ошибка данных запроса", slog.Any("err", err))
+//			c.JSON(http.StatusBadRequest, gin.H{"error": "Ошибка данных запроса"})
+//			return
+//		}
+//		//log.Printf("Полученные данные JSON: %+v", user) // Логируем данные после успешного парсинга
+//
+//		if err := validation.ValidatePassword(user.Password); err != nil {
+//			slog.Warn("Пароль слишком короткий", slog.Any("password_length", err))
+//			c.JSON(http.StatusBadRequest, gin.H{"error": "Пароль слишком короткий"})
+//			return
+//		}
+//
+//		// Получаем список допустимых полей для логина
+//		possibleFields := config.GetPossibleFields()
+//		if len(possibleFields) == 0 {
+//			slog.Error("Ошибка конфигурации сервера")
+//			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка конфигурации сервера"})
+//			return
+//		}
+//
+//		field, value, err := determineLoginField(&user, possibleFields)
+//		if err != nil {
+//			slog.Warn("Неверные данные для входа", slog.Any("err", err))
+//			c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные данные для входа"})
+//			return
+//		}
+//
+//		if field == "phone" {
+//			key := config.PhoneSecretKey // os.Getenv("PHONE_SECRET_KEY")
+//
+//			value, err = security.EncryptPhoneNumber(value, key)
+//
+//			if err != nil {
+//				c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при шифровании телефона"})
+//				return
+//			}
+//		}
+//
+//		userID, storedHash, storedRole, passwordUpdatedAt, err := db_postgres.FetchUserFromDB(db, field, value)
+//		if err != nil {
+//			slog.Warn("Неверные учетные данные", slog.Any("err", err))
+//			c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные учетные данные"})
+//			return
+//		}
+//
+//		// Проверяем пароль
+//		err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(*user.Password))
+//		if err != nil {
+//			slog.Warn("Неверные учетные данные", slog.Any("err", err))
+//			c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные учетные данные"})
+//			return
+//		}
+//
+//		// Проверяем срок действия пароля
+//		if isPasswordExpired(passwordUpdatedAt) {
+//			slog.Warn("Срок действия пароля истёк", slog.String("userID", userID))
+//			c.JSON(http.StatusForbidden, gin.H{"error": "Срок действия пароля истёк. Пожалуйста, смените пароль."})
+//			return
+//		}
+//
+//		// Генерация JWT
+//		token, err := middleware.GenerateJWT(userID, storedRole) // userID.String()
+//		if err != nil {
+//			slog.Error("Ошибка при генерации токена", slog.String("userID", userID), slog.Any("err", err))
+//			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при генерации токена"})
+//			return
+//		}
+//
+//		refreshToken, err := middleware.GenerateRefreshToken(userID, storedRole) // userID.String()
+//		if err != nil {
+//			slog.Error("Ошибка при генерации токена", slog.String("userID", userID), slog.Any("err", err))
+//			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при генерации токена"})
+//			return
+//		}
+//
+//		// Настройка Cookie для Refresh токена
+//		isSecure := config.Environment == "production"
+//		http.SetCookie(c.Writer, &http.Cookie{
+//			Name:     "refreshToken",
+//			Value:    refreshToken,
+//			Path:     "/",
+//			HttpOnly: true,
+//			Secure:   isSecure,
+//			SameSite: http.SameSiteLaxMode,
+//		})
+//
+//		slog.Info("Авторизация успешна", slog.String("userID", userID))
+//		// Отправляем ответ клиенту
+//		c.Header("Authorization", fmt.Sprintf("Bearer %s", token))
+//		c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
+//	}
+//}
+
 //////////////////////
 
 //func fetchUserFromDB(db *sql.DB, field, value string) (string, string, string, time.Time, error) {
@@ -105,131 +340,6 @@ func determineLoginField(user *LoginRequest, possibleFields []string) (string, s
 //}
 
 ///////////////////////////////////////////////////
-
-// LoginHandlerDB авторизует пользователя с помощью логина, пароля и возвращает токен доступа.
-//
-// @Summary Авторизация пользователя
-// @Description Авторизация с использованием логина и пароля. Возвращает JWT токен доступа и устанавливает refresh токен в Cookie.
-// @Tags Authentication
-// @Accept json
-// @Produce json
-// @Param request body handlers.LoginRequest true "Данные для авторизации"
-// @Success 200 {object} map[string]string "Успешный ответ с токеном доступа"
-// @Failure 400 {object} map[string]string "Ошибка данных запроса"
-// @Failure 401 {object} map[string]string "Неверные учетные данные"
-// @Failure 403 {object} map[string]string "Срок действия пароля истёк"
-// @Failure 429 {object} map[string]string "Слишком много запросов"
-// @Failure 500 {object} map[string]string "Ошибка сервера"
-// @Header 200 {string} Authorization "Bearer <токен доступа>"
-// @Router /api/auth/login [post]
-func LoginHandlerDB(db *sql.DB) gin.HandlerFunc {
-	// Настраиваем лимитер для ограничения запросов
-	limiter := tollbooth.NewLimiter(5, nil) // Максимум 5 запросов в минуту
-	limiter.SetMessage("Слишком много запросов, попробуйте позже.")
-	limiter.SetMessageContentType("application/json")
-
-	return func(c *gin.Context) {
-		// Применяем rate limiting
-		tollbooth_gin.LimitHandler(limiter)(c)
-		if c.IsAborted() {
-			return
-		}
-
-		// Читаем данные запроса
-		var user LoginRequest
-		if err := c.BindJSON(&user); err != nil {
-			slog.Error("Ошибка данных запроса", slog.Any("err", err))
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Ошибка данных запроса"})
-			return
-		}
-		//log.Printf("Полученные данные JSON: %+v", user) // Логируем данные после успешного парсинга
-
-		if err := validation.ValidatePassword(user.Password); err != nil {
-			slog.Warn("Пароль слишком короткий", slog.Any("password_length", err))
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Пароль слишком короткий"})
-			return
-		}
-
-		// Получаем список допустимых полей для логина
-		possibleFields := config.GetPossibleFields()
-		if len(possibleFields) == 0 {
-			slog.Error("Ошибка конфигурации сервера")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка конфигурации сервера"})
-			return
-		}
-
-		field, value, err := determineLoginField(&user, possibleFields)
-		if err != nil {
-			slog.Warn("Неверные данные для входа", slog.Any("err", err))
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные данные для входа"})
-			return
-		}
-
-		if field == "phone" {
-			key := config.PhoneSecretKey // os.Getenv("PHONE_SECRET_KEY")
-
-			value, err = security.EncryptPhoneNumber(value, key)
-
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при шифровании телефона"})
-				return
-			}
-		}
-
-		userID, storedHash, storedRole, passwordUpdatedAt, err := db_postgres.FetchUserFromDB(db, field, value)
-		if err != nil {
-			slog.Warn("Неверные учетные данные", slog.Any("err", err))
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные учетные данные"})
-			return
-		}
-
-		// Проверяем пароль
-		err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(*user.Password))
-		if err != nil {
-			slog.Warn("Неверные учетные данные", slog.Any("err", err))
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверные учетные данные"})
-			return
-		}
-
-		// Проверяем срок действия пароля
-		if isPasswordExpired(passwordUpdatedAt) {
-			slog.Warn("Срок действия пароля истёк", slog.String("userID", userID))
-			c.JSON(http.StatusForbidden, gin.H{"error": "Срок действия пароля истёк. Пожалуйста, смените пароль."})
-			return
-		}
-
-		// Генерация JWT
-		token, err := middleware.GenerateJWT(userID, storedRole) // userID.String()
-		if err != nil {
-			slog.Error("Ошибка при генерации токена", slog.String("userID", userID), slog.Any("err", err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при генерации токена"})
-			return
-		}
-
-		refreshToken, err := middleware.GenerateRefreshToken(userID, storedRole) // userID.String()
-		if err != nil {
-			slog.Error("Ошибка при генерации токена", slog.String("userID", userID), slog.Any("err", err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при генерации токена"})
-			return
-		}
-
-		// Настройка Cookie для Refresh токена
-		isSecure := config.Environment == "production"
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     "refreshToken",
-			Value:    refreshToken,
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   isSecure,
-			SameSite: http.SameSiteLaxMode,
-		})
-
-		slog.Info("Авторизация успешна", slog.String("userID", userID))
-		// Отправляем ответ клиенту
-		c.Header("Authorization", fmt.Sprintf("Bearer %s", token))
-		c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
-	}
-}
 
 //// Функция для фильтрации пустых полей
 //func filterEmptyFields(user LoginRequest) LoginRequest {

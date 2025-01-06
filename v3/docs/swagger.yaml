@@ -2,6 +2,7 @@ definitions:
   handlers.ErrorResponse:
     properties:
       error:
+        example: Описание ошибки
         type: string
     type: object
   handlers.LoginRequest:
@@ -13,6 +14,12 @@ definitions:
       phone:
         type: string
       username:
+        type: string
+    type: object
+  handlers.MessageResponse:
+    properties:
+      message:
+        example: Операция выполнена успешно
         type: string
     type: object
   handlers.RegisterRequest:
@@ -59,6 +66,15 @@ definitions:
       totalRecords:
         type: integer
     type: object
+  handlers.UpdateUserRequest:
+    properties:
+      role:
+        example: admin
+        type: string
+      username:
+        example: new_username
+        type: string
+    type: object
 info:
   contact: {}
 paths:
@@ -101,6 +117,93 @@ paths:
       security:
       - BearerAuth: []
       summary: Получение списка пользователей
+      tags:
+      - users
+  /api/auth/admin/users/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Удаляет пользователя по ID. Требуется авторизация через Bearer
+        Token.
+      parameters:
+      - description: Bearer токен
+        example: '"Bearer your_token"'
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ID пользователя
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.MessageResponse'
+            - properties:
+                message:
+                  type: string
+              type: object
+        "500":
+          description: Ошибка удаления пользователя
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Удаление пользователя
+      tags:
+      - users
+    put:
+      consumes:
+      - application/json
+      description: Обновляет имя и роль пользователя. Требуется авторизация через
+        Bearer Token.
+      parameters:
+      - description: Bearer токен
+        example: '"Bearer your_token"'
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ID пользователя
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные для обновления пользователя
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.MessageResponse'
+            - properties:
+                message:
+                  type: string
+              type: object
+        "400":
+          description: Некорректные данные запроса
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Ошибка обновления пользователя
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Обновление данных пользователя
       tags:
       - users
   /api/auth/login:
