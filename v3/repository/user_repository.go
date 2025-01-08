@@ -2,6 +2,7 @@ package repository
 
 import (
 	"apiP/v3/config"
+	"apiP/v3/dto"
 	"apiP/v3/security"
 	"database/sql"
 	"fmt"
@@ -138,9 +139,68 @@ func (r *userRepository) FetchUser(field, value string) (string, string, string,
 
 // Реализация UserWriter ///////////////////////////////////////////////////////////////////////////////////////////////
 
-// UpdateUser обновляет данные пользователя.
-func (r *userRepository) UpdateUser(id, username, role string) error {
-	_, err := r.db.Exec("UPDATE users SET username = $1, role = $2 WHERE id = $3", username, role, id)
+//// UpdateUser обновляет данные пользователя.
+//func (r *userRepository) UpdateUser(id, username, role string) error {
+//	_, err := r.db.Exec("UPDATE users SET username = $1, role = $2 WHERE id = $3", username, role, id)
+//	return err
+//}
+
+func (r *userRepository) UpdateUser(id string, data dto.UpdateUserData) error {
+	// Формируем динамический SQL-запрос
+	query := "UPDATE users SET "
+	params := []interface{}{}
+	i := 1
+
+	if data.Username != nil {
+		query += "username = $" + fmt.Sprint(i) + ", "
+		params = append(params, *data.Username)
+		i++
+	}
+	if data.Email != nil {
+		query += "email = $" + fmt.Sprint(i) + ", "
+		params = append(params, *data.Email)
+		i++
+	}
+	if data.Phone != nil {
+		query += "phone = $" + fmt.Sprint(i) + ", "
+		params = append(params, *data.Phone)
+		i++
+	}
+	if data.Role != nil {
+		query += "role = $" + fmt.Sprint(i) + ", "
+		params = append(params, *data.Role)
+		i++
+	}
+	if data.Status != nil {
+		query += "status = $" + fmt.Sprint(i) + ", "
+		params = append(params, *data.Status)
+		i++
+	}
+	if data.PasswordUpdatedAt != nil {
+		query += "password_updated_at = $" + fmt.Sprint(i) + ", "
+		params = append(params, *data.PasswordUpdatedAt)
+		i++
+	}
+	if data.CreatedAt != nil {
+		query += "created_at = $" + fmt.Sprint(i) + ", "
+		params = append(params, *data.CreatedAt)
+		i++
+	}
+	if data.LastLogin != nil {
+		query += "last_login = $" + fmt.Sprint(i) + ", "
+		params = append(params, *data.LastLogin)
+		i++
+	}
+
+	// Убираем последнюю запятую и пробел
+	query = query[:len(query)-2]
+
+	// Добавляем условие WHERE
+	query += " WHERE id = $" + fmt.Sprint(i)
+	params = append(params, id)
+
+	// Выполняем запрос
+	_, err := r.db.Exec(query, params...)
 	return err
 }
 

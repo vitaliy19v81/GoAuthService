@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"apiP/v3/config"
+	"apiP/v3/dto"
 	"apiP/v3/security"
 	"database/sql"
 	"github.com/gin-gonic/gin"
@@ -11,9 +12,20 @@ import (
 	"time"
 )
 
+//type UpdateUserRequest struct {
+//	Username string `json:"username" example:"new_username"`
+//	Role     string `json:"role" example:"admin"`
+//}
+
 type UpdateUserRequest struct {
-	Username string `json:"username" example:"new_username"`
-	Role     string `json:"role" example:"admin"`
+	Username          *string `json:"username" example:"new_username"`
+	Email             *string `json:"email" example:"new_email@example.com"`
+	Phone             *string `json:"phone" example:"1234567890"`
+	Role              *string `json:"role" example:"admin"`
+	Status            *string `json:"status" example:"active"`
+	PasswordUpdatedAt *string `json:"password_updated_at" example:"2024-12-25T15:04:05Z"`
+	CreatedAt         *string `json:"created_at" example:"2024-12-01T12:00:00Z"`
+	LastLogin         *string `json:"last_login" example:"2024-12-20T18:30:00Z"`
 }
 
 type SuccessResponse struct {
@@ -88,16 +100,29 @@ func (h *Handler) GetUsersHandler(c *gin.Context) {
 // @Router /api/auth/admin/users/{id} [put]
 func (h *Handler) UpdateUserHandler(c *gin.Context) {
 	id := c.Param("id")
-	var input struct {
-		Username string `json:"username"`
-		Role     string `json:"role"`
-	}
+
+	// Привязываем данные запроса к структуре UpdateUserRequest
+	var input UpdateUserRequest
+
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
 
-	err := h.userRepo.UpdateUser(id, input.Username, input.Role)
+	// Преобразуем данные в структуру dto.UpdateUserData
+	data := dto.UpdateUserData{
+		Username:          input.Username,
+		Email:             input.Email,
+		Phone:             input.Phone,
+		Role:              input.Role,
+		Status:            input.Status,
+		PasswordUpdatedAt: input.PasswordUpdatedAt,
+		CreatedAt:         input.CreatedAt,
+		LastLogin:         input.LastLogin,
+	}
+
+	// Передаем ID и данные в метод репозитория
+	err := h.userRepo.UpdateUser(id, data) // input.Username, input.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
 		return
