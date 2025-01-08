@@ -178,6 +178,12 @@ func (h *Handler) LoginHandler(c *gin.Context) {
 		return
 	}
 
+	now := time.Now()
+	if err := h.userRepo.UpdateLastLogin(userID, now); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при обновлении времени последнего входа"})
+		return
+	}
+
 	// Настройка Cookie для Refresh токена
 	isSecure := config.Environment == "production"
 	http.SetCookie(c.Writer, &http.Cookie{

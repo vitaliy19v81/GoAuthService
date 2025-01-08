@@ -39,6 +39,7 @@ type UserWriter interface {
 	UpdateUser(id string, data dto.UpdateUserData) error
 	DeleteUser(id string) error
 	InsertUser(userID *uuid.UUID, username, email, phone *string, passwordHash []byte) (*uuid.UUID, error)
+	UpdateLastLogin(userID string, lastLogin time.Time) error
 }
 
 type UserValidator interface {

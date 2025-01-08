@@ -126,7 +126,7 @@ func (r *userRepository) FetchUser(field, value string) (string, string, string,
 	var passwordUpdatedAt time.Time
 	var userID uuid.UUID
 
-	query := fmt.Sprintf("SELECT id, password, role, password_updated_at FROM users WHERE %s = $1", field)
+	query := fmt.Sprintf("SELECT id, password, role, password_updated_at FROM users WHERE %s = $1", field) // noinspection SqlDialectInspection
 	err := r.db.QueryRow(query, value).Scan(&userID, &storedHash, &storedRole, &passwordUpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -147,7 +147,7 @@ func (r *userRepository) FetchUser(field, value string) (string, string, string,
 
 func (r *userRepository) UpdateUser(id string, data dto.UpdateUserData) error {
 	// Формируем динамический SQL-запрос
-	query := "UPDATE users SET "
+	query := "UPDATE users SET " // noinspection SqlDialectInspection
 	params := []interface{}{}
 	i := 1
 
@@ -219,6 +219,13 @@ func (r *userRepository) InsertUser(userID *uuid.UUID, username, email, phone *s
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 	return userID, nil
+}
+
+// UpdateLastLogin обновления времени последнего входа
+func (r *userRepository) UpdateLastLogin(userID string, lastLogin time.Time) error {
+	query := "UPDATE users SET last_login = $1 WHERE id = $2"
+	_, err := r.db.Exec(query, lastLogin, userID)
+	return err
 }
 
 // Реализация UserValidator ////////////////////////////////////////////////////////////////////////////////////////////
