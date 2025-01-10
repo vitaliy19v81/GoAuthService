@@ -3,14 +3,19 @@ package security
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
 )
 
+// GenerateDeterministicIV создает детерминированный IV на основе хэша телефона.
+func GenerateDeterministicIV(phone string) []byte {
+	hash := sha256.Sum256([]byte(phone))
+	return hash[:aes.BlockSize] // Берем первые 16 байт хэша
+}
+
 // EncryptPhoneNumber шифрует телефон с использованием AES в режиме CBC.
-// IV генерируется случайно и добавляется к результату.
 func EncryptPhoneNumber(phone, key string) (string, error) {
 	// Создаем AES-блок на основе переданного ключа
 	block, err := aes.NewCipher([]byte(key))
@@ -18,11 +23,14 @@ func EncryptPhoneNumber(phone, key string) (string, error) {
 		return "", fmt.Errorf("failed to create AES cipher: %w", err)
 	}
 
-	// Генерируем случайный IV
-	iv := make([]byte, aes.BlockSize)
-	if _, err := rand.Read(iv); err != nil {
-		return "", fmt.Errorf("failed to generate IV: %w", err)
-	}
+	//// Генерируем случайный IV
+	//iv := make([]byte, aes.BlockSize)
+	//if _, err := rand.Read(iv); err != nil {
+	//	return "", fmt.Errorf("failed to generate IV: %w", err)
+	//}
+
+	// Генерируем фиксированный IV на основе телефона
+	iv := GenerateDeterministicIV(phone)
 
 	// Добавляем PKCS7 padding
 	paddingSize := aes.BlockSize - len(phone)%aes.BlockSize

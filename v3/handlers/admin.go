@@ -121,6 +121,16 @@ func (h *Handler) UpdateUserHandler(c *gin.Context) {
 		LastLogin:         input.LastLogin,
 	}
 
+	// Если телефон не nil, шифруем и добавляем в структуру данных
+	if input.Phone != nil {
+		encryptedPhone, err := security.EncryptPhoneNumber(*input.Phone, config.PhoneSecretKey)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt phone"})
+			return
+		}
+		data.Phone = &encryptedPhone // Передаем зашифрованный телефон
+	}
+
 	// Передаем ID и данные в метод репозитория
 	err := h.userRepo.UpdateUser(id, data) // input.Username, input.Role)
 	if err != nil {
