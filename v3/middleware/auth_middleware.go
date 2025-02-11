@@ -15,7 +15,7 @@ import (
 
 var ValidRoles = []string{"user", "editor", "moderator", "admin"} // Роли по возрастанию прав
 
-func roleIndex(role string) int {
+func RoleIndex(role string) int {
 	for i, r := range ValidRoles {
 		if r == role {
 			return i
@@ -67,13 +67,27 @@ func AuthMiddleware(minRole string) gin.HandlerFunc {
 			return
 		}
 
-		if minRole != "" && roleIndex(claims.Role) < roleIndex(minRole) {
+		if minRole != "" && RoleIndex(claims.Role) < RoleIndex(minRole) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 			c.Abort()
 			return
 		}
 
-		c.Set("username", claims.UserID)
+		c.Set("userid", claims.UserID)
+		c.Set("role", claims.Role)
+		c.Next()
+	}
+}
+
+// RecoveryMiddleware обрабатывает панику и продолжает работу сервера
+func RecoveryMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Recovered from panic: %v", r)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
+			}
+		}()
 		c.Next()
 	}
 }

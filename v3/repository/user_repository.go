@@ -5,8 +5,10 @@ import (
 	"apiP/v3/dto"
 	"apiP/v3/security"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"log"
 	//"log"
 	"time"
 )
@@ -121,20 +123,35 @@ func nullTimeToPtr(nt sql.NullTime) *time.Time {
 	return nil
 }
 
-func (r *userRepository) FetchUser(field, value string) (string, string, string, time.Time, error) {
-	var storedHash, storedRole string
+func (r *userRepository) FetchUser(field, value string) (string, string, string, string, time.Time, error) {
+	var storedHash, storedRole, storedStatus string
 	var passwordUpdatedAt time.Time
 	var userID uuid.UUID
 
-	query := fmt.Sprintf("SELECT id, password, role, password_updated_at FROM users WHERE %s = $1", field) // noinspection SqlDialectInspection
-	err := r.db.QueryRow(query, value).Scan(&userID, &storedHash, &storedRole, &passwordUpdatedAt)
+	query := fmt.Sprintf("SELECT id, password, role, status, password_updated_at FROM users WHERE %s = $1", field) // noinspection SqlDialectInspection
+	err := r.db.QueryRow(query, value).Scan(&userID, &storedHash, &storedRole, &storedStatus, &passwordUpdatedAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return "", "", "", time.Time{}, fmt.Errorf("no user found for the provided field")
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", "", "", time.Time{}, fmt.Errorf("no user found for the provided field")
 		}
-		return "", "", "", time.Time{}, fmt.Errorf("database error: %w", err)
+		return "", "", "", "", time.Time{}, fmt.Errorf("database error: %w", err)
 	}
-	return userID.String(), storedHash, storedRole, passwordUpdatedAt, nil
+	return userID.String(), storedHash, storedRole, storedStatus, passwordUpdatedAt, nil
+}
+
+// Реализация UserExists ///////////////////////////////////////////////////////////////////////////////////////////////
+
+func (r *userRepository) ExistsById(userID string) (bool, error) {
+	// Проверяем, существует ли пользователь
+	var userExists bool
+	err := r.db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)", userID).Scan(&userExists)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return userExists, fmt.Errorf("user not found: %w", err)
+		}
+		return userExists, fmt.Errorf("database error: %w", err)
+	}
+	return userExists, nil
 }
 
 // Реализация UserWriter ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -226,6 +243,33 @@ func (r *userRepository) UpdateLastLogin(userID string, lastLogin time.Time) err
 	query := "UPDATE users SET last_login = $1 WHERE id = $2"
 	_, err := r.db.Exec(query, lastLogin, userID)
 	return err
+}
+
+// UpdateStatus обновления статуса пользователя
+func (r *userRepository) UpdateStatus(userID, status string) error {
+	query := "UPDATE users SET status = $1 WHERE id = $2"
+	_, err := r.db.Exec(query, status, userID)
+	return err
+}
+
+// UpdateUserRole обновления статуса пользователя
+func (r *userRepository) UpdateUserRole(userID, role string) error {
+	query := "UPDATE users SET role = $1 WHERE id = $2"
+	_, err := r.db.Exec(query, role, userID)
+	return err
+}
+
+func (r *userRepository) InsertToBlackList(token string) error {
+	query := `
+		INSERT INTO revoked_tokens (token, revoked_at) 
+		VALUES ($1, $2)`
+	//  RETURNING id //.Scan(&id)
+	_, err := r.db.Exec(query, token, time.Now().UTC())
+	if err != nil {
+		log.Println(err)
+		return fmt.Errorf("database error: %w", err)
+	}
+	return nil
 }
 
 // Реализация UserValidator ////////////////////////////////////////////////////////////////////////////////////////////

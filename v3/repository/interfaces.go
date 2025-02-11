@@ -23,6 +23,7 @@ type User struct {
 // UserRepository Общий интерфейс
 type UserRepository interface {
 	UserReader
+	UserExists
 	UserWriter
 	UserValidator
 }
@@ -31,18 +32,25 @@ type UserRepository interface {
 // Интерфейсы
 
 type UserReader interface {
-	GetUsers(limit, offset int) ([]map[string]interface{}, int, error)
-	FetchUser(field, value string) (string, string, string, time.Time, error)
+	GetUsers(limit, offset int) ([]map[string]interface{}, int, error)                // Получение списка пользователей
+	FetchUser(field, value string) (string, string, string, string, time.Time, error) // Получение id, password, role, status, password_updated_at пользователя
+}
+
+type UserExists interface {
+	ExistsById(userID string) (bool, error)
 }
 
 type UserWriter interface {
-	UpdateUser(id string, data dto.UpdateUserData) error
-	DeleteUser(id string) error
+	UpdateUser(id string, data dto.UpdateUserData) error // Обновление данных пользователя
+	DeleteUser(id string) error                          // Удаление пользователя
 	InsertUser(userID *uuid.UUID, username, email, phone *string, passwordHash []byte) (*uuid.UUID, error)
-	UpdateLastLogin(userID string, lastLogin time.Time) error
+	UpdateLastLogin(userID string, lastLogin time.Time) error // Обновить последний вход
+	UpdateStatus(userID, status string) error                 // Обновить статус пользователя
+	UpdateUserRole(userID, role string) error                 // Обновить роль пользователя
+	InsertToBlackList(token string) error
 }
 
-type UserValidator interface {
+type UserValidator interface { // Проверка уникальности пользователя
 	CheckUsernameUniqueness(username *string) error
 	CheckEmailUniqueness(email *string) error
 	CheckPhoneUniqueness(phone *string) error

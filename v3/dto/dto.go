@@ -11,3 +11,13 @@ type UpdateUserData struct {
 	CreatedAt         *string `json:"created_at"`
 	LastLogin         *string `json:"last_login"`
 }
+
+// UpdateUserStatus описывает обновляемый статус пользователя.
+type UpdateUserStatus struct {
+	Status *string `json:"status"`
+}
+
+// UpdateUserRole описывает обновляемую роль пользователя.
+type UpdateUserRole struct {
+	Role *string `json:"role"`
+}

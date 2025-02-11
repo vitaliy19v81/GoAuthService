@@ -5,6 +5,26 @@ definitions:
         example: Описание ошибки
         type: string
     type: object
+  handlers.LoginByEmailRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  handlers.LoginByPhoneRequest:
+    properties:
+      password:
+        type: string
+      phone:
+        type: string
+    required:
+    - password
+    - phone
+    type: object
   handlers.LoginRequest:
     properties:
       email:
@@ -21,6 +41,18 @@ definitions:
       message:
         example: Операция выполнена успешно
         type: string
+    type: object
+  handlers.RegisterByPhoneRequest:
+    properties:
+      password:
+        description: Пароль пользователя (обязательно)
+        type: string
+      phone:
+        description: Телефон пользователя (обязательно)
+        type: string
+    required:
+    - password
+    - phone
     type: object
   handlers.RegisterRequest:
     properties:
@@ -43,18 +75,6 @@ definitions:
     - email
     - password
     type: object
-  handlers.RegisterRequestPhone:
-    properties:
-      password:
-        description: Пароль пользователя (обязательно)
-        type: string
-      phone:
-        description: Телефон пользователя (обязательно)
-        type: string
-    required:
-    - password
-    - phone
-    type: object
   handlers.SuccessResponse:
     properties:
       data:
@@ -68,11 +88,41 @@ definitions:
     type: object
   handlers.UpdateUserRequest:
     properties:
+      created_at:
+        example: "2024-12-01T12:00:00Z"
+        type: string
+      email:
+        example: new_email@example.com
+        type: string
+      last_login:
+        example: "2024-12-20T18:30:00Z"
+        type: string
+      password_updated_at:
+        example: "2024-12-25T15:04:05Z"
+        type: string
+      phone:
+        example: "1234567890"
+        type: string
       role:
         example: admin
         type: string
+      status:
+        example: active
+        type: string
       username:
         example: new_username
+        type: string
+    type: object
+  handlers.UpdateUserRoleRequest:
+    properties:
+      role:
+        example: user
+        type: string
+    type: object
+  handlers.UpdateUserStatusRequest:
+    properties:
+      status:
+        example: active
         type: string
     type: object
 info:
@@ -206,6 +256,104 @@ paths:
       summary: Обновление данных пользователя
       tags:
       - users
+  /api/auth/admin/users/{id}/assign-role:
+    put:
+      consumes:
+      - application/json
+      description: Обновляет статус пользователя. Требуется авторизация через Bearer
+        Token.
+      parameters:
+      - description: Bearer токен
+        example: '"Bearer your_token"'
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ID пользователя
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные для обновления роли пользователя
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateUserRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.MessageResponse'
+            - properties:
+                message:
+                  type: string
+              type: object
+        "400":
+          description: Некорректные данные запроса
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Ошибка обновления пользователя
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Обновление данных пользователя
+      tags:
+      - users
+  /api/auth/admin/users/{id}/status:
+    put:
+      consumes:
+      - application/json
+      description: Обновляет статус пользователя. Требуется авторизация через Bearer
+        Token.
+      parameters:
+      - description: Bearer токен
+        example: '"Bearer your_token"'
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: ID пользователя
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные для обновления статуса пользователя
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateUserStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/handlers.MessageResponse'
+            - properties:
+                message:
+                  type: string
+              type: object
+        "400":
+          description: Некорректные данные запроса
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Ошибка обновления пользователя
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Обновление данных пользователя
+      tags:
+      - users
   /api/auth/login:
     post:
       consumes:
@@ -219,6 +367,124 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/handlers.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Успешный ответ с токеном доступа
+          headers:
+            Authorization:
+              description: Bearer <токен доступа>
+              type: string
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Ошибка данных запроса
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Неверные учетные данные
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Срок действия пароля истёк
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "429":
+          description: Слишком много запросов
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Авторизация пользователя
+      tags:
+      - Authentication
+  /api/auth/login-by-email:
+    post:
+      consumes:
+      - application/json
+      description: Авторизация с использованием логина и пароля. Возвращает JWT токен
+        доступа и устанавливает refresh токен в Cookie.
+      parameters:
+      - description: Данные для авторизации
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.LoginByEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Успешный ответ с токеном доступа
+          headers:
+            Authorization:
+              description: Bearer <токен доступа>
+              type: string
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Ошибка данных запроса
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Неверные учетные данные
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Срок действия пароля истёк
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "429":
+          description: Слишком много запросов
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка сервера
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Авторизация пользователя
+      tags:
+      - Authentication
+  /api/auth/login-by-phone:
+    post:
+      consumes:
+      - application/json
+      description: Авторизация с использованием логина и пароля. Возвращает JWT токен
+        доступа и устанавливает refresh токен в Cookie.
+      parameters:
+      - description: Данные для авторизации
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.LoginByPhoneRequest'
       produces:
       - application/json
       responses:
@@ -356,7 +622,7 @@ paths:
         name: user
         required: true
         schema:
-          $ref: '#/definitions/handlers.RegisterRequestPhone'
+          $ref: '#/definitions/handlers.RegisterByPhoneRequest'
       produces:
       - application/json
       responses:
