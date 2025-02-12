@@ -1,3 +1,4 @@
+// /home/vtoroy/GolandProjects/apiP/v3/dto/dto.go
 package dto
 
 // UpdateUserData описывает обновляемые данные пользователя.
@@ -20,4 +21,9 @@ type UpdateUserStatus struct {
 // UpdateUserRole описывает обновляемую роль пользователя.
 type UpdateUserRole struct {
 	Role *string `json:"role"`
+}
+
+type UpdateUserRoleByLogin struct { // Еще не используется
+	Identifier *string `json:"identifier"`
+	Role       *string `json:"role"`
 }

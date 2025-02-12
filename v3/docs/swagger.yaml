@@ -86,6 +86,13 @@ definitions:
       totalRecords:
         type: integer
     type: object
+  handlers.UpdateUserByLoginRequest:
+    properties:
+      identifier:
+        type: string
+      role:
+        type: string
+    type: object
   handlers.UpdateUserRequest:
     properties:
       created_at:
@@ -352,6 +359,54 @@ paths:
       security:
       - BearerAuth: []
       summary: Обновление данных пользователя
+      tags:
+      - users
+  /api/auth/admin/users/assign-role:
+    put:
+      consumes:
+      - application/json
+      description: Обновляет роль пользователя по переданному идентификатору (email,
+        phone, username). Требуется авторизация через Bearer Token.
+      parameters:
+      - description: Bearer токен
+        example: Bearer your_token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Данные для обновления роли пользователя (идентификатор и новая
+          роль)
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateUserByLoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Роль успешно обновлена
+          schema:
+            $ref: '#/definitions/handlers.MessageResponse'
+        "400":
+          description: Некорректные данные запроса
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "403":
+          description: Запрещено изменять роль
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Пользователь не найден
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "500":
+          description: Ошибка обновления пользователя
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Обновление роли пользователя
       tags:
       - users
   /api/auth/login:

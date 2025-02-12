@@ -1,3 +1,4 @@
+// /home/vtoroy/GolandProjects/apiP/v3/handlers/admin.go
 package handlers
 
 import (
@@ -5,6 +6,7 @@ import (
 	"apiP/v3/dto"
 	"apiP/v3/middleware"
 	"apiP/v3/security"
+	"apiP/v3/validation"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
@@ -233,6 +235,104 @@ func (h *Handler) UpdateUserRoleHandler(c *gin.Context) {
 	err = h.userRepo.UpdateUserRole(id, role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Role updated successfully"})
+}
+
+// UpdateUserByLoginHandler обновляет роль пользователя по email, username или phone.
+// @Summary Обновление роли пользователя
+// @Description Обновляет роль пользователя по переданному идентификатору (email, phone, username). Требуется авторизация через Bearer Token.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Bearer токен" example(Bearer your_token)
+// @Param input body UpdateUserByLoginRequest true "Данные для обновления роли пользователя (идентификатор и новая роль)"
+// @Success 200 {object} MessageResponse "Роль успешно обновлена"
+// @Failure 400 {object} ErrorResponse "Некорректные данные запроса"
+// @Failure 403 {object} ErrorResponse "Запрещено изменять роль"
+// @Failure 404 {object} ErrorResponse "Пользователь не найден"
+// @Failure 500 {object} ErrorResponse "Ошибка обновления пользователя"
+// @Security BearerAuth
+// @Router /api/auth/admin/users/assign-role [put]
+func (h *Handler) UpdateUserByLoginHandler(c *gin.Context) {
+	currentRole := c.GetString("role")
+
+	var err error
+
+	var input UpdateUserByLoginRequest
+
+	//var req struct {
+	//	Identifier string `json:"identifier"`
+	//	Role       string `json:"role"`
+	//}
+
+	//if err := c.BindJSON(&req); err != nil {
+	//	c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+	//	return
+	//}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	data := dto.UpdateUserRoleByLogin{
+		Identifier: input.Identifier,
+		Role:       input.Role,
+	}
+
+	identifier := *data.Identifier
+	role := *data.Role
+	// Определяем поле для поиска
+	var field string
+	if validation.EmailRegex.MatchString(identifier) {
+		field = "email"
+	} else if validation.PhoneRegex.MatchString(identifier) {
+		field = "phone"
+	} else if validation.UsernameRegex.MatchString(identifier) {
+		field = "username"
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	if field == "phone" {
+		key := config.PhoneSecretKey
+		identifier, err = security.EncryptPhoneNumber(identifier, key)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при шифровании телефона"})
+			return
+		}
+	}
+
+	exists, err := h.userRepo.ExistsByLogin(field, identifier)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+		return
+	}
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Failed to update user"})
+		return
+	}
+
+	currentRoleIndex := middleware.RoleIndex(currentRole)
+	newRoleIndex := middleware.RoleIndex(role)
+
+	if newRoleIndex >= currentRoleIndex {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You cannot change your own role"})
+		return
+	}
+
+	if !middleware.Contains(middleware.ValidRoles, role) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role"})
+		return
+	}
+
+	err = h.userRepo.UpdateUserRoleByLogin(field, identifier, role)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update role"})
 		return
 	}
 

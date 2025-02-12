@@ -141,10 +141,24 @@ func (r *userRepository) FetchUser(field, value string) (string, string, string,
 
 // Реализация UserExists ///////////////////////////////////////////////////////////////////////////////////////////////
 
+// ExistsById Проверяем, существует ли пользователь по ID пользователя
 func (r *userRepository) ExistsById(userID string) (bool, error) {
-	// Проверяем, существует ли пользователь
 	var userExists bool
 	err := r.db.QueryRow("SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)", userID).Scan(&userExists)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return userExists, fmt.Errorf("user not found: %w", err)
+		}
+		return userExists, fmt.Errorf("database error: %w", err)
+	}
+	return userExists, nil
+}
+
+// ExistsByLogin Проверяем, существует ли пользователь по логину пользователя
+func (r *userRepository) ExistsByLogin(field, identifier string) (bool, error) {
+	var userExists bool
+	query := fmt.Sprintf("SELECT EXISTS (SELECT 1 FROM users WHERE %s = $1)", field)
+	err := r.db.QueryRow(query, identifier).Scan(&userExists)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return userExists, fmt.Errorf("user not found: %w", err)
@@ -256,6 +270,12 @@ func (r *userRepository) UpdateStatus(userID, status string) error {
 func (r *userRepository) UpdateUserRole(userID, role string) error {
 	query := "UPDATE users SET role = $1 WHERE id = $2"
 	_, err := r.db.Exec(query, role, userID)
+	return err
+}
+
+func (r *userRepository) UpdateUserRoleByLogin(field, identifier, role string) error {
+	query := fmt.Sprintf("UPDATE users SET role = $1 WHERE %s = $2", field)
+	_, err := r.db.Exec(query, role, identifier)
 	return err
 }
 

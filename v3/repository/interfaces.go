@@ -38,15 +38,17 @@ type UserReader interface {
 
 type UserExists interface {
 	ExistsById(userID string) (bool, error)
+	ExistsByLogin(field, identifier string) (bool, error)
 }
 
 type UserWriter interface {
 	UpdateUser(id string, data dto.UpdateUserData) error // Обновление данных пользователя
 	DeleteUser(id string) error                          // Удаление пользователя
 	InsertUser(userID *uuid.UUID, username, email, phone *string, passwordHash []byte) (*uuid.UUID, error)
-	UpdateLastLogin(userID string, lastLogin time.Time) error // Обновить последний вход
-	UpdateStatus(userID, status string) error                 // Обновить статус пользователя
-	UpdateUserRole(userID, role string) error                 // Обновить роль пользователя
+	UpdateLastLogin(userID string, lastLogin time.Time) error   // Обновить последний вход
+	UpdateStatus(userID, status string) error                   // Обновить статус пользователя
+	UpdateUserRole(userID, role string) error                   // Обновить роль пользователя
+	UpdateUserRoleByLogin(field, identifier, role string) error // Обновить роль пользователя по логину
 	InsertToBlackList(token string) error
 }
 

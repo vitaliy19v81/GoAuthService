@@ -24,6 +24,11 @@ type UpdateUserRoleRequest struct {
 	Role *string `json:"role" example:"user"`
 }
 
+type UpdateUserByLoginRequest struct {
+	Identifier *string `json:"identifier"`
+	Role       *string `json:"role"`
+}
+
 type SuccessResponse struct {
 	Data         interface{} `json:"data"` // Используйте конкретный тип вместо `interface{}` (например, []User)
 	TotalRecords int         `json:"totalRecords"`
